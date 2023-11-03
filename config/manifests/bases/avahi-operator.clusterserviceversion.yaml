@@ -1,0 +1,46 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: avahi-lb.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions: {}
+  description: Publishes a hostname for the IP of a type:Loadbalancer Service using
+    the avahi-daemon of the host
+  displayName: avahi-lb
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - avahi
+  - service
+  - publish
+  - hostname
+  links:
+  - name: Avahi Operator
+    url: https://avahi-lb.domain
+  maintainers:
+  - email: christian.heike@icloud.com
+    name: Christian Heike
+  maturity: alpha
+  provider:
+    name: github.com/Tanemahuta
+    url: https://github.com/Tanemahuta/avahi-lb
+  version: 0.0.0

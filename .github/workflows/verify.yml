@@ -1,0 +1,71 @@
+name: "verify"
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_call:
+    inputs: {}
+  workflow_dispatch:
+    inputs: {}
+jobs:
+  fullbuild:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: run
+        run: ""
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      golang: ${{ steps.changes.outputs.golang == 'true' }}
+      docker: ${{ steps.changes.outputs.docker == 'true'}}
+      helm: ${{ steps.changes.outputs.helm == 'true' }}
+    steps:
+      # Checkout
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      # Determine changes
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            golang:
+              - '**/*.go'
+              - '**/testdata/**'
+              - 'go.mod'
+              - 'go.sum'
+              - '.golangci.yaml'
+              - '.github/actions/go-*/*.yaml'
+              - '.github/workflows/*-go.yaml'
+            helm:
+              - 'charts/**'
+              - '.yamllint'
+              - '.github/actions/helm-*/*.yaml'
+              - '.github/workflows/*-helm.yaml'
+            docker:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '.hadolint.yaml'
+              - 'buildinfo/*.sh'
+              - '.github/actions/docker-*/*.yaml'
+              - '.github/workflows/*-docker.yaml'
+  golang:
+    needs:
+      - changes
+      - fullbuild
+    uses: ./.github/workflows/verify-go.yaml
+    if: needs.changes.outputs.golang == 'true' || needs.fullbuild.outputs.run
+  docker:
+    needs:
+      - changes
+      - fullbuild
+    uses: ./.github/workflows/verify-docker.yaml
+    if: needs.changes.outputs.golang == 'true' || needs.changes.outputs.docker == 'true' || needs.fullbuild.outputs.run
+  helm:
+    needs:
+      - changes
+      - fullbuild
+    uses: ./.github/workflows/verify-helm.yaml
+    if: needs.changes.outputs.helm == 'true' || startsWith(github.ref, 'refs/tags/') || needs.fullbuild.outputs.run

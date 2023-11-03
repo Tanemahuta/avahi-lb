@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: test-namespace
+  name: test-name
+  annotations:
+    # Prefix provided, thus, service test-hostname.<suffix> is used.
+    "service.beta.kubernetes.io/avahi-publish": "test-hostname"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      name: web
+      targetPort: web
+status:
+  loadBalancer:
+    ingress:
+      - ip: 10.0.0.1

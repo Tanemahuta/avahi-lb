@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.beta.kubernetes.io/avahi-publish: "true"
+    service.beta.kubernetes.io/avahi-publish-hostname: test-hostname
+  creationTimestamp: null
+  name: test-name
+spec:
+  type: LoadBalancer
+status:
+  loadBalancer: {}

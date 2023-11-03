@@ -1,0 +1,21 @@
+name: "deploy"
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*.*.*"]
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+  publish:
+    uses: ./.github/workflows/publish.yml
+    needs: ["verify"]
+    secrets: inherit
+    permissions:
+      contents: write
+      packages: write
+      id-token: write

@@ -1,0 +1,44 @@
+on:
+  workflow_call:
+    inputs: {}
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/go-setup
+      # Run golangci-lint
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          only-new-issues: true
+      # Update the go report
+      - name: update-go-report
+        uses: creekorful/goreportcard-action@v1.0
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/go-setup
+      # Run ginkgo
+      - name: ginkgo
+        run: |
+          go run github.com/onsi/ginkgo/v2/ginkgo -r --randomize-all --randomize-suites \
+          --fail-on-pending --keep-going --trace \
+          --cover --coverprofile=cover.profile \
+          --json-report=test-report.json \
+          --race --junit-report=test-report.xml \
+          ./...
+      # Push results to code coverages
+      - name: Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: cover.profile

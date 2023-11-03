@@ -1,0 +1,49 @@
+on:
+  workflow_call:
+    inputs: {}
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/helm-setup
+      - name: Run chart-testing (lint)
+        run: ct lint --target-branch ${{ github.event.repository.default_branch }}
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: image-name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+      # We need to build the docker image in order to deploy the chart
+      - uses: ./.github/actions/docker-setup
+      - uses: ./.github/actions/docker-build
+        with:
+          tags: ${{env.IMAGE_NAME}}:${{ github.sha }}
+          push: false
+          load: true
+      - uses: ./.github/actions/helm-setup
+      # Create a KiND cluster
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.4.0
+      # Run the installation for the chart, loading the temporary docker image and using it for the deployment
+      - name: Run chart-testing (install)
+        timeout-minutes: 2
+        run: |
+          kind load docker-image ${{env.IMAGE_NAME}}:${{ github.sha }} --name chart-testing
+          ct install\
+           --target-branch ${{ github.event.repository.default_branch }}\
+           --helm-extra-set-args "
+           --set-string=controllerManager.manager.image.tag=${{ github.sha }} \
+           --set-string=controllerManager.manager.image.repository=${{env.IMAGE_NAME}} \
+           --set=config.disableValidation=true" \
+           --debug
+

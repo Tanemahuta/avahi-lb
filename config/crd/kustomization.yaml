@@ -1,0 +1,2 @@
+# Adds namespace to all resources.
+namespace: avahi-lb-system

@@ -1,0 +1,23 @@
+name: auto-approve owner
+
+on: pull_request_target
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  auto-merge-pr:
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == github.actor }}
+    steps:
+      - name: Enable auto-merge for owner PRs
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      - name: Approve the PR
+        run: gh pr review $PR_URL --approve -b "self-approval for repository owner"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}

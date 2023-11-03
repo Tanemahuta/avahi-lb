@@ -1,0 +1,33 @@
+on:
+  workflow_call:
+    inputs: {}
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    # Run hadolint
+    steps:
+      # Checkout
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+  test:
+    runs-on: ubuntu-latest
+    # Build docker image
+    steps:
+      - name: image-name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+      # Checkout
+      - name: checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/docker-setup
+      - uses: ./.github/actions/docker-build
+        with:
+          tags: ${{env.IMAGE_NAME}}:${{ github.sha }}
+          push: false
+          load: false

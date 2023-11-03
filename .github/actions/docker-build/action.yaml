@@ -1,0 +1,44 @@
+name: docker-build
+description: "builds and optionally pushes a docker image"
+inputs:
+  tags:
+    required: true
+    description: "tags to be built"
+  push:
+    required: false
+    default: "false"
+    description: "true if to push the image"
+  load:
+    required: false
+    default: "true"
+    description: "true if to load the image"
+  platforms:
+    required: false
+    description: "optional platforms to be used"
+outputs:
+  digest:
+    description: "digest of the built image"
+    value: ${{ steps.docker-build.outputs.digest }}
+  imageid:
+    description: "id of the built image"
+    value: ${{ steps.docker-build.outputs.imageid }}
+runs:
+  using: composite
+  steps:
+    # Build and push Docker image with Buildx (don't push on PR)
+    # https://github.com/docker/build-push-action
+    - name: Build docker image
+      id: docker-build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        load: ${{ inputs.load }}
+        push: ${{ inputs.push }}
+        platforms: ${{ inputs.platforms }}
+        build-args: |
+          VERSION=${{ github.ref_name }}
+          COMMIT_SHA=${{ github.sha }}
+        tags: ${{ inputs.tags }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+

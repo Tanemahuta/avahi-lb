@@ -1,0 +1,44 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: test-namespace
+  name: avahi-test-name
+  ownerReferences:
+    - apiVersion: v1
+      kind: Service
+      name: test-name
+      uid: ""
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      "service.kubernetes.io/namespace": test-namespace
+      "service.kubernetes.io/name": test-name
+  template:
+    metadata:
+      labels:
+        "service.kubernetes.io/namespace": test-namespace
+        "service.kubernetes.io/name": test-name
+    spec:
+      containers:
+        - name: avahi-publish
+          image: ydkn/avahi:latest
+          imagePullPolicy: Always
+          command:
+            - avahi-publish
+          args:
+            - -a
+            - test-name.test-namespace.my-cluster.local
+            - 10.0.0.1
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /var/run/dbus
+              readOnly: true
+              name: dbus
+      volumes:
+        - name: dbus
+          hostPath:
+            path: /var/run/dbus
+            type: ""
