@@ -1,0 +1,44 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "avahi-lb.fullname" . }}-manager-role
+  labels:
+  {{- include "avahi-lb.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "avahi-lb.fullname" . }}-manager-rolebinding
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: avahi-lb
+    app.kubernetes.io/part-of: avahi-lb
+  {{- include "avahi-lb.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: '{{ include "avahi-lb.fullname" . }}-manager-role'
+subjects:
+- kind: ServiceAccount
+  name: '{{ include "avahi-lb.fullname" . }}-controller-manager'
+  namespace: '{{ .Release.Namespace }}'
