@@ -44,6 +44,7 @@ controllerManager:
   serviceAccount:
     annotations: {}
 kubernetesClusterDomain: cluster.local
+avahiPublishImage: ghcr.io/tanemahuta/avahi-publish:0.8-r13-alpine3.19
 metricsService:
   ports:
   - name: https

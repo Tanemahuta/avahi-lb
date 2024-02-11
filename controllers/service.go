@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	PublishAnnotation = "service.beta.kubernetes.io/avahi-publish"
-	MountNameDBUS     = "dbus"
-	MountPathDBUS     = "/var/run/dbus"
+	DefaultAvahiPublishImage = "ghcr.io/tanemahuta/avahi-publish:0.8-r13-alpine3.19"
+	PublishAnnotation        = "service.beta.kubernetes.io/avahi-publish"
+	MountNameDBUS            = "dbus"
+	MountPathDBUS            = "/var/run/dbus"
 )
 
 var _ reconcile.Reconciler = &Service{}
@@ -30,6 +31,8 @@ var _ reconcile.Reconciler = &Service{}
 type Service struct {
 	// HostnameSuffix to be appended.
 	HostnameSuffix string
+	// AvahiPublishImage to be used.
+	AvahiPublishImage string
 	// Client to be used to apply the deployments.
 	Client client.Client
 }
@@ -125,14 +128,13 @@ func (s *Service) applyValues(svc *corev1.Service, hostname string, address stri
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{
 					{
-						Name:    "avahi-publish",
-						Image:   "ydkn/avahi:latest",
-						Command: []string{"avahi-publish"},
-						Args:    []string{"-a", hostname, address},
+						Name:  "avahi-publish",
+						Image: s.avahiPublishImage(),
+						Args:  []string{hostname, address},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: MountNameDBUS, ReadOnly: true, MountPath: MountPathDBUS},
 						},
-						ImagePullPolicy: corev1.PullAlways,
+						ImagePullPolicy: corev1.PullIfNotPresent,
 						SecurityContext: &corev1.SecurityContext{Privileged: ptr(true)},
 					},
 				},
@@ -167,6 +169,13 @@ func (s *Service) removeDeployment(ctx context.Context, name types.NamespacedNam
 		return err
 	}
 	return nil
+}
+
+func (s *Service) avahiPublishImage() string {
+	if len(s.AvahiPublishImage) != 0 {
+		return s.AvahiPublishImage
+	}
+	return DefaultAvahiPublishImage
 }
 
 func ptr[T any](t T) *T {

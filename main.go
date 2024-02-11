@@ -66,12 +66,14 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	const envVar = "KUBERNETES_CLUSTER_DOMAIN"
-	controller.HostnameSuffix = os.Getenv(envVar)
+	const clusterDomainEnvVar = "KUBERNETES_CLUSTER_DOMAIN"
+	controller.HostnameSuffix = os.Getenv(clusterDomainEnvVar)
 	if len(controller.HostnameSuffix) == 0 {
-		setupLog.Error(errors.Errorf("EnvVar '%v' not set", envVar), "unable to acquire cluster domain")
+		setupLog.Error(errors.Errorf("EnvVar '%v' not set", clusterDomainEnvVar), "unable to acquire cluster domain")
 		os.Exit(1)
 	}
+
+	controller.AvahiPublishImage = os.Getenv("AVAHI_PUBLISH_IMAGE")
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
