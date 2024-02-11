@@ -23,12 +23,9 @@ spec:
     spec:
       containers:
         - name: avahi-publish
-          image: ydkn/avahi:latest
-          imagePullPolicy: Always
-          command:
-            - avahi-publish
+          image: ghcr.io/tanemahuta/avahi-publish:0.8-r13-alpine3.19
+          imagePullPolicy: IfNotPresent
           args:
-            - -a
             - test-name.test-namespace.my-cluster.local
             - 10.0.0.1
           securityContext:

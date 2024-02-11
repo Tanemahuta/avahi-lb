@@ -167,7 +167,7 @@ func RunTest(suffix string) func() {
 					Eventually(func() string {
 						actDeployment := &appsv1.Deployment{}
 						_ = k8sClient.Get(ctx, client.ObjectKeyFromObject(expDeployment), actDeployment)
-						return actDeployment.Spec.Template.Spec.Containers[0].Args[2]
+						return actDeployment.Spec.Template.Spec.Containers[0].Args[1]
 					}, timeout, poll).Should(Equal(service.Status.LoadBalancer.Ingress[0].IP))
 				})
 			})
