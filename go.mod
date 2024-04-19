@@ -6,7 +6,7 @@ toolchain go1.22.2
 require (
 	github.com/go-logr/logr v1.4.1
 	github.com/onsi/ginkgo/v2 v2.17.1
-	github.com/onsi/gomega v1.32.0
+	github.com/onsi/gomega v1.33.0
 	github.com/pkg/errors v0.9.1
 	k8s.io/api v0.30.0
 	k8s.io/apimachinery v0.30.0
