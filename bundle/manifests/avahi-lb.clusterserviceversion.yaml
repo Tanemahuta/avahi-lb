@@ -4,10 +4,10 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2023-11-03T20:45:15Z"
-    operators.operatorframework.io/builder: operator-sdk-v1.32.0
-    operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
-  name: avahi-lb.v0.0.1
+    createdAt: "2026-07-29T07:01:28Z"
+    operators.operatorframework.io/builder: operator-sdk-v1.42.3
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
+  name: avahi-lb.v1.0.1
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -77,50 +77,11 @@ spec:
               labels:
                 control-plane: controller-manager
             spec:
-              affinity:
-                nodeAffinity:
-                  requiredDuringSchedulingIgnoredDuringExecution:
-                    nodeSelectorTerms:
-                    - matchExpressions:
-                      - key: kubernetes.io/arch
-                        operator: In
-                        values:
-                        - amd64
-                        - arm64
-                        - ppc64le
-                        - s390x
-                      - key: kubernetes.io/os
-                        operator: In
-                        values:
-                        - linux
               containers:
               - args:
-                - --secure-listen-address=0.0.0.0:8443
-                - --upstream=http://127.0.0.1:8080/
-                - --logtostderr=true
-                - --v=0
-                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1
-                name: kube-rbac-proxy
-                ports:
-                - containerPort: 8443
-                  name: https
-                  protocol: TCP
-                resources:
-                  limits:
-                    cpu: 500m
-                    memory: 128Mi
-                  requests:
-                    cpu: 5m
-                    memory: 64Mi
-                securityContext:
-                  allowPrivilegeEscalation: false
-                  capabilities:
-                    drop:
-                    - ALL
-              - args:
-                - --health-probe-bind-address=:8081
-                - --metrics-bind-address=127.0.0.1:8080
+                - --metrics-bind-address=:8443
                 - --leader-elect
+                - --hostname-suffix=$
                 command:
                 - /manager
                 image: controller:latest
@@ -131,6 +92,10 @@ spec:
                   initialDelaySeconds: 15
                   periodSeconds: 20
                 name: manager
+                ports:
+                - containerPort: 8443
+                  name: https
+                  protocol: TCP
                 readinessProbe:
                   httpGet:
                     path: /readyz
@@ -209,7 +174,8 @@ spec:
   - email: christian.heike@icloud.com
     name: Christian Heike
   maturity: alpha
+  minKubeVersion: 1.36.0
   provider:
     name: github.com/Tanemahuta
     url: https://github.com/Tanemahuta/avahi-lb
-  version: 0.0.1
+  version: 1.0.1
