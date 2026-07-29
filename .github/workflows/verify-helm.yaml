@@ -7,7 +7,7 @@ jobs:
     steps:
       # Checkout
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: ./.github/actions/helm-setup
@@ -18,7 +18,7 @@ jobs:
     steps:
       # Checkout
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: image-name
@@ -33,7 +33,7 @@ jobs:
       - uses: ./.github/actions/helm-setup
       # Create a KiND cluster
       - name: Create kind cluster
-        uses: helm/kind-action@v1.4.0
+        uses: helm/kind-action@v1.12.0
       # Run the installation for the chart, loading the temporary docker image and using it for the deployment
       - name: Run chart-testing (install)
         timeout-minutes: 2
@@ -46,4 +46,3 @@ jobs:
            --set-string=controllerManager.manager.image.repository=${{env.IMAGE_NAME}} \
            --set=config.disableValidation=true" \
            --debug
-

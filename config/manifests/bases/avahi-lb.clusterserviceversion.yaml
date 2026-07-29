@@ -40,6 +40,7 @@ spec:
   - email: christian.heike@icloud.com
     name: Christian Heike
   maturity: alpha
+  minKubeVersion: 1.36.0
   provider:
     name: github.com/Tanemahuta
     url: https://github.com/Tanemahuta/avahi-lb
