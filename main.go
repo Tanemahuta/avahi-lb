@@ -17,11 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 
 	"github.com/Tanemahuta/avahi-lb/controllers"
-	"github.com/pkg/errors"
+	"github.com/sethvargo/go-envconfig"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -54,7 +55,6 @@ func main() {
 		metricsAddr          string
 		enableLeaderElection bool
 		probeAddr            string
-		controller           controllers.Service
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS, or leave as 0 to disable the metrics service.")
@@ -68,14 +68,15 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	const clusterDomainEnvVar = "KUBERNETES_CLUSTER_DOMAIN"
-	controller.HostnameSuffix = os.Getenv(clusterDomainEnvVar)
-	if len(controller.HostnameSuffix) == 0 {
-		setupLog.Error(errors.Errorf("EnvVar '%v' not set", clusterDomainEnvVar), "unable to acquire cluster domain")
+	var controllerConfig controllers.AvahiConfig
+	if err := envconfig.Process(context.Background(), &controllerConfig); err != nil {
+		setupLog.Error(err, "unable to load controller configuration")
 		os.Exit(1)
 	}
-
-	controller.AvahiPublishImage = os.Getenv("AVAHI_PUBLISH_IMAGE")
+	if err := controllerConfig.Validate(); err != nil {
+		setupLog.Error(err, "invalid controller configuration")
+		os.Exit(1)
+	}
 
 	metricsServerOptions := metricsserver.Options{
 		BindAddress:    metricsAddr,
@@ -106,10 +107,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("adding controller")
-	if err = controller.SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "problem adding controller")
-		os.Exit(1)
+	setupLog.Info("adding controllers")
+	reconcilers := []controllers.AvahiReconciler{
+		controllers.NewService(),
+		controllers.NewIngress(),
+	}
+	for _, reconciler := range reconcilers {
+		if err = reconciler.SetupWithManager(mgr, &controllerConfig); err != nil {
+			setupLog.Error(err, "problem adding controller")
+			os.Exit(1)
+		}
 	}
 
 	setupLog.Info("starting manager")

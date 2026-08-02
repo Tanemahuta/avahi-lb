@@ -23,16 +23,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Tanemahuta/avahi-lb/controllers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controllerconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -46,6 +52,8 @@ var (
 	namespace *corev1.Namespace
 	ctx       context.Context
 )
+
+const testAvahiPublishImage = "ghcr.io/tanemahuta/avahi-publish:0.9_rc4-r0-alpine3.24"
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -96,6 +104,27 @@ func lastLine(s string) string {
 		}
 	}
 	return ""
+}
+
+func SetupReconciler(
+	reconciler controllers.AvahiReconciler,
+	config *controllers.AvahiConfig,
+) controllers.AvahiReconciler {
+	skipNameValidation := true
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme:                 scheme.Scheme,
+		Metrics:                metricsserver.Options{BindAddress: "0"},
+		HealthProbeBindAddress: "0",
+		Client: client.Options{Cache: &client.CacheOptions{DisableFor: []client.Object{
+			&corev1.Service{},
+			&networkingv1.Ingress{},
+			&appsv1.Deployment{},
+		}}},
+		Controller: controllerconfig.Controller{SkipNameValidation: &skipNameValidation},
+	})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(reconciler.SetupWithManager(mgr, config)).To(Succeed())
+	return reconciler
 }
 
 var _ = AfterSuite(func() {

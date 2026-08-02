@@ -1,0 +1,53 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: test-namespace
+  name: avahi-ingress-test-ingress
+  ownerReferences:
+    - apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      name: test-ingress
+      uid: ""
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      "ingress.kubernetes.io/namespace": test-namespace
+      "ingress.kubernetes.io/name": test-ingress
+  template:
+    metadata:
+      labels:
+        "ingress.kubernetes.io/namespace": test-namespace
+        "ingress.kubernetes.io/name": test-ingress
+    spec:
+      containers:
+        - name: avahi-publish-0
+          image: ghcr.io/tanemahuta/avahi-publish:0.9_rc4-r0-alpine3.24
+          imagePullPolicy: IfNotPresent
+          args:
+            - first.my-cluster.local
+            - 10.0.0.1
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /var/run/dbus
+              readOnly: true
+              name: dbus
+        - name: avahi-publish-1
+          image: ghcr.io/tanemahuta/avahi-publish:0.9_rc4-r0-alpine3.24
+          imagePullPolicy: IfNotPresent
+          args:
+            - second.my-cluster.local
+            - 10.0.0.1
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /var/run/dbus
+              readOnly: true
+              name: dbus
+      volumes:
+        - name: dbus
+          hostPath:
+            path: /var/run/dbus
+            type: ""

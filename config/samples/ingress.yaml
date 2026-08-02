@@ -1,0 +1,36 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: test-namespace
+  name: test-ingress
+  annotations:
+    # Publish all non-empty hostnames from spec.rules.
+    "service.beta.kubernetes.io/avahi-publish": "-"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: first.my-cluster.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: first
+                port:
+                  number: 80
+    - host: second.my-cluster.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: second
+                port:
+                  number: 80
+status:
+  loadBalancer:
+    ingress:
+      - ip: 10.0.0.1
