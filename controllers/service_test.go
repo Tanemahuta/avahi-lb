@@ -194,7 +194,9 @@ func RunTest(suffix string) func() {
 }
 
 func copyMeta(expDeployment *appsv1.Deployment, owner client.Object, actDeployment *appsv1.Deployment) {
-	expDeployment.OwnerReferences[0].UID = owner.GetUID()
+	if len(expDeployment.OwnerReferences) > 0 {
+		expDeployment.OwnerReferences[0].UID = owner.GetUID()
+	}
 	actDeployment.ManagedFields = nil
 	expDeployment.APIVersion = actDeployment.APIVersion
 	expDeployment.Kind = actDeployment.Kind

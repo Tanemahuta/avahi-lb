@@ -2,44 +2,36 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: test-namespace
-  name: avahi-ingress-test-ingress
-  ownerReferences:
-    - apiVersion: networking.k8s.io/v1
-      kind: Ingress
-      name: test-ingress
-      uid: ""
+  namespace: avahi-lb-system
+  name: avahi-ingress-traefik
+  labels:
+    "avahi-lb.tanemahuta.github.com/aggregated-ingress": "true"
+    "avahi-lb.tanemahuta.github.com/ingress-class": 858bd5f510
 spec:
   replicas: 1
   selector:
     matchLabels:
-      "ingress.kubernetes.io/namespace": test-namespace
-      "ingress.kubernetes.io/name": test-ingress
+      "avahi-lb.tanemahuta.github.com/aggregated-ingress": "true"
+      "avahi-lb.tanemahuta.github.com/ingress-class": 858bd5f510
   template:
     metadata:
       labels:
-        "ingress.kubernetes.io/namespace": test-namespace
-        "ingress.kubernetes.io/name": test-ingress
+        "avahi-lb.tanemahuta.github.com/aggregated-ingress": "true"
+        "avahi-lb.tanemahuta.github.com/ingress-class": 858bd5f510
     spec:
       containers:
-        - name: avahi-publish-0
+        - name: avahi-publish
           image: ghcr.io/tanemahuta/avahi-publish:0.9_rc4-r0-alpine3.24
           imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
           args:
+            - set -eu; pids=""; trap 'kill $pids 2>/dev/null || true' EXIT INT TERM; address="$1"; shift; for hostname do /usr/bin/avahi-publish -a -R "$hostname" "$address" & pids="$pids $!"; done; wait -n
+            - avahi-publish
+            - 10.0.0.1
             - first.my-cluster.local
-            - 10.0.0.1
-          securityContext:
-            privileged: true
-          volumeMounts:
-            - mountPath: /var/run/dbus
-              readOnly: true
-              name: dbus
-        - name: avahi-publish-1
-          image: ghcr.io/tanemahuta/avahi-publish:0.9_rc4-r0-alpine3.24
-          imagePullPolicy: IfNotPresent
-          args:
             - second.my-cluster.local
-            - 10.0.0.1
           securityContext:
             privileged: true
           volumeMounts:

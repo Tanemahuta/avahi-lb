@@ -96,6 +96,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = controllers.DeploymentCleanup(
+		context.Background(),
+		mgr.GetAPIReader(),
+		mgr.GetClient(),
+		&controllerConfig,
+	); err != nil {
+		setupLog.Error(err, "unable to clean up stale publisher deployments")
+		os.Exit(1)
+	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

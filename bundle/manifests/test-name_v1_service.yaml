@@ -2,11 +2,16 @@ apiVersion: v1
 kind: Service
 metadata:
   annotations:
-    service.beta.kubernetes.io/avahi-publish: "true"
-    service.beta.kubernetes.io/avahi-publish-hostname: test-hostname
+    service.beta.kubernetes.io/avahi-publish: '-'
   creationTimestamp: null
   name: test-name
 spec:
+  ports:
+  - name: web
+    port: 80
+    targetPort: web
   type: LoadBalancer
 status:
-  loadBalancer: {}
+  loadBalancer:
+    ingress:
+    - ip: 10.0.0.1

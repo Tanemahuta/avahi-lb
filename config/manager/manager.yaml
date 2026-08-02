@@ -70,9 +70,17 @@ spec:
         - /manager
         args:
         - --leader-elect
-        - --hostname-suffix=$
         image: controller:latest
         name: manager
+        env:
+        - name: AVAHI_HOSTNAME_SUFFIX
+          value: cluster.local
+        - name: AVAHI_PUBLISH_IMAGE
+          value: ghcr.io/tanemahuta/avahi-publish:0.9_rc4-r0-alpine3.24
+        - name: AVAHI_PUBLISH_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

@@ -41,6 +41,19 @@ all non-empty hostnames from `spec.rules`, using the IP reported in
 `<value>.${AVAHI_HOSTNAME_SUFFIX}` instead. See the
 [Ingress example](config/samples/ingress.yaml).
 
+Ingresses are grouped by IngressClass. The operator creates one publisher
+Deployment per class in its own namespace, with one container per IP address.
+Each container publishes all unique hostnames grouped under its IP. Ingress
+aliases are published with Avahi reverse publication disabled (`-R`), so
+multiple hostnames can safely share the same Traefik or other ingress IP. The
+class is resolved from `spec.ingressClassName`, the legacy
+`kubernetes.io/ingress.class` annotation, or the single default IngressClass.
+
+During startup, before registering the controllers, avahi-lb removes stale
+owner-based publisher Deployments left by missing or no-longer-publishable
+Services and by the former per-Ingress deployment model. Current class-grouped
+Ingress Deployments are ownerless and are rebuilt from the live Ingress state.
+
 Hostnames containing a dot are treated as already qualified. The configured
 suffix is appended only to dotless hostnames.
 
@@ -67,6 +80,8 @@ The controller reads its configuration from the environment:
   hostnames.
 - `AVAHI_PUBLISH_IMAGE` is required and selects the image used by publisher
   Deployments.
+- `AVAHI_PUBLISH_NAMESPACE` selects the namespace for aggregated Ingress
+  publisher Deployments. The chart sets it to the operator Pod namespace.
 - `KUBERNETES_CLUSTER_DOMAIN` is supported as a legacy fallback when
   `AVAHI_HOSTNAME_SUFFIX` is not set.
 

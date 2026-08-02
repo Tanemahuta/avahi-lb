@@ -46,11 +46,12 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	cfg       *rest.Config
-	k8sClient client.Client
-	testEnv   *envtest.Environment
-	namespace *corev1.Namespace
-	ctx       context.Context
+	cfg              *rest.Config
+	k8sClient        client.Client
+	testEnv          *envtest.Environment
+	namespace        *corev1.Namespace
+	publishNamespace *corev1.Namespace
+	ctx              context.Context
 )
 
 const testAvahiPublishImage = "ghcr.io/tanemahuta/avahi-publish:0.9_rc4-r0-alpine3.24"
@@ -93,6 +94,8 @@ var _ = BeforeSuite(func() {
 	By("Creating the Namespace to perform the tests")
 	namespace = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-namespace"}}
 	Expect(k8sClient.Create(ctx, namespace)).NotTo(HaveOccurred())
+	publishNamespace = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "avahi-lb-system"}}
+	Expect(k8sClient.Create(ctx, publishNamespace)).NotTo(HaveOccurred())
 })
 
 func lastLine(s string) string {
@@ -118,6 +121,7 @@ func SetupReconciler(
 		Client: client.Options{Cache: &client.CacheOptions{DisableFor: []client.Object{
 			&corev1.Service{},
 			&networkingv1.Ingress{},
+			&networkingv1.IngressClass{},
 			&appsv1.Deployment{},
 		}}},
 		Controller: controllerconfig.Controller{SkipNameValidation: &skipNameValidation},
@@ -129,7 +133,15 @@ func SetupReconciler(
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
-	err := testEnv.Stop()
-	Expect(err).NotTo(HaveOccurred())
-	_ = k8sClient.Delete(ctx, namespace, client.PropagationPolicy(metav1.DeletePropagationForeground))
+	if k8sClient != nil {
+		_ = k8sClient.Delete(ctx, namespace, client.PropagationPolicy(metav1.DeletePropagationForeground))
+		_ = k8sClient.Delete(
+			ctx,
+			publishNamespace,
+			client.PropagationPolicy(metav1.DeletePropagationForeground),
+		)
+	}
+	if cfg != nil {
+		Expect(testEnv.Stop()).To(Succeed())
+	}
 })
