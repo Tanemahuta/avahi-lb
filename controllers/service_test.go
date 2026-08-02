@@ -39,7 +39,7 @@ func RunTest(suffix string) func() {
 			service       *corev1.Service
 			status        corev1.ServiceStatus
 			expDeployment *appsv1.Deployment
-			sut           *controllers.Service
+			sut           controllers.AvahiReconciler
 		)
 		BeforeEach(func() {
 			By("Reading the source service")
@@ -63,14 +63,14 @@ func RunTest(suffix string) func() {
 					},
 				}
 			} else {
-				expDeployment = ReadResource[*appsv1.Deployment]("testdata/expected/deployment" + suffix + ".yaml")
+				expDeployment = ReadResource[*appsv1.Deployment]("testdata/expected/service_deployment" + suffix + ".yaml")
 			}
 			By("Creating the service")
 			Expect(k8sClient.Create(ctx, service)).NotTo(HaveOccurred())
-			sut = &controllers.Service{
-				HostnameSuffix: "my-cluster.local",
-				Client:         k8sClient,
-			}
+			sut = SetupReconciler(controllers.NewService(), &controllers.AvahiConfig{
+				HostnameSuffix:    "my-cluster.local",
+				AvahiPublishImage: testAvahiPublishImage,
+			})
 			By("Waiting for the service to be created")
 			Eventually(func() error {
 				found := &corev1.Service{}
@@ -193,8 +193,8 @@ func RunTest(suffix string) func() {
 	}
 }
 
-func copyMeta(expDeployment *appsv1.Deployment, service *corev1.Service, actDeployment *appsv1.Deployment) {
-	expDeployment.OwnerReferences[0].UID = service.UID
+func copyMeta(expDeployment *appsv1.Deployment, owner client.Object, actDeployment *appsv1.Deployment) {
+	expDeployment.OwnerReferences[0].UID = owner.GetUID()
 	actDeployment.ManagedFields = nil
 	expDeployment.APIVersion = actDeployment.APIVersion
 	expDeployment.Kind = actDeployment.Kind
@@ -212,10 +212,12 @@ func copyMeta(expDeployment *appsv1.Deployment, service *corev1.Service, actDepl
 		actDeployment.Spec.Template.Spec.TerminationGracePeriodSeconds
 	expDeployment.Spec.Template.Spec.DNSPolicy =
 		actDeployment.Spec.Template.Spec.DNSPolicy
-	expDeployment.Spec.Template.Spec.Containers[0].TerminationMessagePolicy =
-		actDeployment.Spec.Template.Spec.Containers[0].TerminationMessagePolicy
-	expDeployment.Spec.Template.Spec.Containers[0].TerminationMessagePath =
-		actDeployment.Spec.Template.Spec.Containers[0].TerminationMessagePath
+	for index := range expDeployment.Spec.Template.Spec.Containers {
+		expDeployment.Spec.Template.Spec.Containers[index].TerminationMessagePolicy =
+			actDeployment.Spec.Template.Spec.Containers[index].TerminationMessagePolicy
+		expDeployment.Spec.Template.Spec.Containers[index].TerminationMessagePath =
+			actDeployment.Spec.Template.Spec.Containers[index].TerminationMessagePath
+	}
 	expDeployment.Spec.Strategy = actDeployment.Spec.Strategy
 	expDeployment.Spec.RevisionHistoryLimit = actDeployment.Spec.RevisionHistoryLimit
 	expDeployment.Spec.ProgressDeadlineSeconds = actDeployment.Spec.ProgressDeadlineSeconds

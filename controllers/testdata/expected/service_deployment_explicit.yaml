@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: avahi-publish
-          image: ghcr.io/tanemahuta/avahi-publish:0.8-r13-alpine3.19
+          image: ghcr.io/tanemahuta/avahi-publish:0.9_rc4-r0-alpine3.24
           imagePullPolicy: IfNotPresent
           args:
             - test-hostname.my-cluster.local

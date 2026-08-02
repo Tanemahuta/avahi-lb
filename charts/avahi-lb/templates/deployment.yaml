@@ -43,7 +43,7 @@ spec:
         command:
         - /manager
         env:
-        - name: KUBERNETES_CLUSTER_DOMAIN
+        - name: AVAHI_HOSTNAME_SUFFIX
           value: {{ quote .Values.kubernetesClusterDomain }}
         - name: AVAHI_PUBLISH_IMAGE
           value: {{ quote .Values.avahiPublishImage }}
