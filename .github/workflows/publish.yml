@@ -18,6 +18,11 @@ on:
         type: string
         required: false
         default: ""
+      release-tag:
+        description: Create a GitHub release for this tag after all publications succeed
+        type: string
+        required: false
+        default: ""
 env:
   REGISTRY: ghcr.io
   PLATFORMS: "linux/amd64,linux/arm64/v8"
@@ -118,3 +123,18 @@ jobs:
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           CR_SKIP_EXISTING: "true"
+  release:
+    needs: [docker, helm]
+    if: >-
+      inputs.release-tag != '' &&
+      needs.docker.result == 'success' &&
+      needs.helm.result == 'success'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+        run: gh release create "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --generate-notes --verify-tag

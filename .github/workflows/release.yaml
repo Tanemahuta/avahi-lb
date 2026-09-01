@@ -73,3 +73,4 @@ jobs:
       publish-docker: ${{ needs.prepare.outputs.release_app == 'true' }}
       publish-helm: true
       app-version: ${{ needs.prepare.outputs.version }}
+      release-tag: ${{ needs.prepare.outputs.release_app == 'true' && needs.prepare.outputs.tag || '' }}
