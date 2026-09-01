@@ -6,6 +6,13 @@ on:
     inputs: {}
   workflow_dispatch:
     inputs: {}
+
+# A pull-request run and a branch run for the same head branch share one group.
+# Once a PR exists, its run supersedes any branch run still in progress.
+concurrency:
+  group: verify-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   fullbuild:
     runs-on: ubuntu-latest

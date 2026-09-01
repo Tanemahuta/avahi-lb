@@ -1,11 +1,10 @@
 name: auto-merge
 
-# Merge only after the verification workflow has completed successfully. Using
-# workflow_run here makes the test result an explicit gate instead of relying on
-# repository branch-protection settings to delay GitHub's auto-merge feature.
+# Enable auto-merge only after CodeQL has completed successfully for the PR.
+# Other required checks remain enforced by GitHub's auto-merge mechanism.
 on:
   workflow_run:
-    workflows: [verify]
+    workflows: [CodeQL,verify]
     types: [completed]
 
 permissions:
