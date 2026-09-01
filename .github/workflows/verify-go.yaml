@@ -7,13 +7,13 @@ jobs:
     steps:
       # Checkout
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/go-setup
       # Run golangci-lint
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.12
           only-new-issues: true
@@ -25,7 +25,7 @@ jobs:
     steps:
       # Checkout
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/go-setup
@@ -40,6 +40,6 @@ jobs:
           ./...
       # Push results to code coverages
       - name: Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7.0.0
         with:
           files: cover.profile

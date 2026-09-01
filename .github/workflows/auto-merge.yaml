@@ -1,0 +1,44 @@
+name: auto-merge
+
+# Merge only after the verification workflow has completed successfully. Using
+# workflow_run here makes the test result an explicit gate instead of relying on
+# repository branch-protection settings to delay GitHub's auto-merge feature.
+on:
+  workflow_run:
+    workflows: [verify]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge-pr:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.pull_requests[0] != null
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge eligible PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pr_author="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.user.login')"
+          pr_head_sha="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+
+          if [[ "${pr_head_sha}" != "${TESTED_SHA}" ]]; then
+            echo "The PR changed after this verification run; skipping merge."
+            exit 0
+          fi
+
+          if [[ "${pr_author}" != "${REPOSITORY_OWNER}" && "${pr_author}" != "dependabot[bot]" ]]; then
+            echo "PR author is not eligible for automatic merging."
+            exit 0
+          fi
+
+          gh pr merge "${PR_NUMBER}" --repo "${REPOSITORY}" --auto --merge
