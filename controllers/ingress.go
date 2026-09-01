@@ -22,7 +22,6 @@ const (
 	ingressKind            = "Ingress"
 	legacyIngressClass     = "kubernetes.io/ingress.class"
 	defaultIngressClass    = "ingressclass.kubernetes.io/is-default-class"
-	maxDNSSubdomainLength  = 253
 	trueValue              = "true"
 )
 
@@ -32,13 +31,20 @@ const (
 
 // Ingress reconciles annotated Kubernetes Ingresses.
 type Ingress struct {
-	client client.Client
-	config *AvahiConfig
+	client      client.Client
+	config      *AvahiConfig
+	deployments DeploymentHandler
 }
 
 // IngressPublicationGroups groups hostnames first by IngressClass and then by
 // load-balancer IP address.
 type IngressPublicationGroups map[string]map[string][]string
+
+type ingressPublication struct {
+	className string
+	address   string
+	hostnames []string
+}
 
 var _ AvahiReconciler = (*Ingress)(nil)
 
@@ -71,6 +77,11 @@ func (i *Ingress) SetupWithManager(
 	}
 	i.client = mgr.GetClient()
 	i.config = config
+	var handlerErr error
+	i.deployments, handlerErr = NewDeploymentHandler(i.client, config)
+	if handlerErr != nil {
+		return handlerErr
+	}
 	return controllerruntime.NewControllerManagedBy(mgr).
 		For(&networkingv1.Ingress{}).
 		Owns(&appsv1.Deployment{}).
@@ -86,7 +97,12 @@ func (i *Ingress) collectPublications(ctx context.Context) (IngressPublicationGr
 	if classErr != nil {
 		return nil, classErr
 	}
-	return GroupIngresses(ingresses.Items, defaultClass, i.config.HostnameSuffix), nil
+	return groupIngresses(
+		ingresses.Items,
+		defaultClass,
+		i.config,
+		true,
+	), nil
 }
 
 // GroupIngresses groups publishable Ingress hostnames by resolved IngressClass
@@ -96,28 +112,27 @@ func GroupIngresses(
 	defaultClass string,
 	hostnameSuffix string,
 ) IngressPublicationGroups {
+	return groupIngresses(
+		ingresses,
+		defaultClass,
+		&AvahiConfig{HostnameSuffix: hostnameSuffix},
+		false,
+	)
+}
+
+func groupIngresses(
+	ingresses []networkingv1.Ingress,
+	defaultClass string,
+	config *AvahiConfig,
+	filter bool,
+) IngressPublicationGroups {
 	groups := make(IngressPublicationGroups)
 	for index := range ingresses {
-		ingress := &ingresses[index]
-		if ingress.DeletionTimestamp != nil {
+		publication, ok := publicationForIngress(&ingresses[index], defaultClass, config, filter)
+		if !ok {
 			continue
 		}
-		address := ingressAddress(ingress)
-		if address == "" {
-			continue
-		}
-		className := ingressClassName(ingress, defaultClass)
-		if className == "" {
-			continue
-		}
-		for _, hostname := range expandHostnames(ingress, ingressHostnames(ingress), hostnameSuffix) {
-			if groups[className] == nil {
-				groups[className] = make(map[string][]string)
-			}
-			if !slices.Contains(groups[className][address], hostname) {
-				groups[className][address] = append(groups[className][address], hostname)
-			}
-		}
+		addIngressPublication(groups, publication)
 	}
 	for _, addresses := range groups {
 		for address := range addresses {
@@ -127,44 +142,66 @@ func GroupIngresses(
 	return groups
 }
 
+func publicationForIngress(
+	ingress *networkingv1.Ingress,
+	defaultClass string,
+	config *AvahiConfig,
+	filter bool,
+) (ingressPublication, bool) {
+	address := ingressAddress(ingress)
+	className := ingressClassName(ingress, defaultClass)
+	if ingress.DeletionTimestamp != nil || address == "" || className == "" {
+		return ingressPublication{}, false
+	}
+	hostnames := ingressHostnames(ingress)
+	key := client.ObjectKeyFromObject(ingress)
+	if filter {
+		hostnames = config.PublishableHostnames(key, hostnames)
+	} else {
+		hostnames = config.ExpandHostnames(key, hostnames)
+	}
+	if len(hostnames) == 0 {
+		return ingressPublication{}, false
+	}
+	return ingressPublication{className: className, address: address, hostnames: hostnames}, true
+}
+
+func addIngressPublication(groups IngressPublicationGroups, publication ingressPublication) {
+	if groups[publication.className] == nil {
+		groups[publication.className] = make(map[string][]string)
+	}
+	for _, hostname := range publication.hostnames {
+		hostnames := groups[publication.className][publication.address]
+		if !slices.Contains(hostnames, hostname) {
+			groups[publication.className][publication.address] = append(hostnames, hostname)
+		}
+	}
+}
+
 func (i *Ingress) applyPublications(
 	ctx context.Context,
 	publications IngressPublicationGroups,
 ) (map[client.ObjectKey]struct{}, error) {
 	desired := make(map[client.ObjectKey]struct{}, len(publications))
 	for className, addressGroups := range publications {
-		key := client.ObjectKey{
-			Namespace: i.config.PublishNamespace,
-			Name:      ingressDeploymentName(className),
-		}
-		desired[key] = struct{}{}
-		if applyErr := i.applyDeployment(
-			ctx,
-			key,
-			className,
-			publicationsByAddress(addressGroups),
-		); applyErr != nil {
-			return nil, applyErr
-		}
-	}
-	return desired, nil
-}
-
-func (i *Ingress) applyDeployment(
-	ctx context.Context,
-	key client.ObjectKey,
-	className string,
-	publications []avahiPublication,
-) error {
-	return upsertDeployment(ctx, i.client, key, func(deployment *appsv1.Deployment) error {
 		labels := map[string]string{
 			aggregatedIngressLabel: trueValue,
 			ingressClassLabel:      shortHash(className),
 		}
-		deployment.Labels = labels
-		applyPublisherDeployment(deployment, i.config, publications, labels, true)
-		return nil
-	})
+		key, applyErr := i.deployments.Publish(ctx, AvahiPublication{
+			Kind:           ingressKind,
+			Name:           className,
+			Namespace:      i.config.PublishNamespace,
+			Labels:         labels,
+			Addresses:      publicationsByAddress(addressGroups),
+			DisableReverse: true,
+		})
+		if applyErr != nil {
+			return nil, applyErr
+		}
+		desired[key] = struct{}{}
+	}
+	return desired, nil
 }
 
 func (i *Ingress) defaultIngressClass(ctx context.Context) (string, error) {
@@ -256,15 +293,6 @@ func ingressClassName(ingress *networkingv1.Ingress, defaultClass string) string
 	return defaultClass
 }
 
-func ingressDeploymentName(className string) string {
-	name := "avahi-ingress-" + className
-	if len(name) <= maxDNSSubdomainLength {
-		return name
-	}
-	suffix := "-" + shortHash(name)
-	return strings.TrimRight(name[:maxDNSSubdomainLength-len(suffix)], "-.") + suffix
-}
-
 func isAggregatedIngressDeployment(deployment *appsv1.Deployment) bool {
 	return deployment.Labels[aggregatedIngressLabel] == trueValue
 }
@@ -274,17 +302,17 @@ func isLegacyIngressDeployment(deployment *appsv1.Deployment) bool {
 		controlledBy(deployment, networkingAPIVersion, ingressKind) != nil
 }
 
-func publicationsByAddress(addressGroups map[string][]string) []avahiPublication {
+func publicationsByAddress(addressGroups map[string][]string) []AvahiAddress {
 	addresses := make([]string, 0, len(addressGroups))
 	for address := range addressGroups {
 		addresses = append(addresses, address)
 	}
 	slices.Sort(addresses)
-	publications := make([]avahiPublication, 0, len(addresses))
+	publications := make([]AvahiAddress, 0, len(addresses))
 	for _, address := range addresses {
-		publications = append(publications, avahiPublication{
-			address:   address,
-			hostnames: addressGroups[address],
+		publications = append(publications, AvahiAddress{
+			Address:   address,
+			Hostnames: addressGroups[address],
 		})
 	}
 	return publications

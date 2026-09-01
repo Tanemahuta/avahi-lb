@@ -49,7 +49,10 @@ func RunTest(suffix string) func() {
 			By("Reading the expected Deployment")
 			if noDeployment {
 				expDeployment = &appsv1.Deployment{
-					ObjectMeta: metav1.ObjectMeta{Namespace: service.Namespace, Name: "avahi-" + service.Name},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: service.Namespace,
+						Name:      "avahi-service-" + service.Name,
+					},
 					Spec: appsv1.DeploymentSpec{
 						Selector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"a": "b"},
@@ -69,6 +72,7 @@ func RunTest(suffix string) func() {
 			Expect(k8sClient.Create(ctx, service)).NotTo(HaveOccurred())
 			sut = SetupReconciler(controllers.NewService(), &controllers.AvahiConfig{
 				HostnameSuffix:    "my-cluster.local",
+				AllowedTLDs:       []string{"local"},
 				AvahiPublishImage: testAvahiPublishImage,
 			})
 			By("Waiting for the service to be created")

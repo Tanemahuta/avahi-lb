@@ -33,6 +33,7 @@ var _ = Describe("Ingress controller", Serial, func() {
 		Expect(k8sClient.Create(ctx, ingress)).To(Succeed())
 		sut = SetupReconciler(controllers.NewIngress(), &controllers.AvahiConfig{
 			HostnameSuffix:    "my-cluster.local",
+			AllowedTLDs:       []string{"local"},
 			AvahiPublishImage: testAvahiPublishImage,
 			PublishNamespace:  publishNamespace.Name,
 		})
@@ -92,6 +93,7 @@ var _ = Describe("Ingress controller", Serial, func() {
 			const configuredImage = "registry.example/avahi-publish:test"
 			sut = SetupReconciler(controllers.NewIngress(), &controllers.AvahiConfig{
 				HostnameSuffix:    "my-cluster.local",
+				AllowedTLDs:       []string{"local"},
 				AvahiPublishImage: configuredImage,
 				PublishNamespace:  publishNamespace.Name,
 			})
@@ -130,6 +132,18 @@ var _ = Describe("Ingress controller", Serial, func() {
 				lastPublisherArgs,
 				Equal([]string{"10.0.0.1", "internal.my-cluster.local"}),
 			))
+		})
+
+		It("does not create a Deployment for a hostname outside the allowed TLDs", func() {
+			ingress.Spec.Rules = []networkingv1.IngressRule{{Host: "blocked.example"}}
+			Expect(k8sClient.Update(ctx, ingress)).To(Succeed())
+
+			_, err := sut.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			var deployment appsv1.Deployment
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(expDeployment), &deployment)).
+				To(WithTransform(k8serrors.IsNotFound, BeTrue()))
 		})
 
 		It("publishes each expanded hostname only once", func() {

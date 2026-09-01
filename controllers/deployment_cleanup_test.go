@@ -19,6 +19,7 @@ import (
 var _ = Describe("Publisher Deployment cleanup", Serial, func() {
 	config := &controllers.AvahiConfig{
 		HostnameSuffix:    "my-cluster.local",
+		AllowedTLDs:       []string{"local"},
 		AvahiPublishImage: testAvahiPublishImage,
 		PublishNamespace:  "avahi-lb-system",
 	}
@@ -39,7 +40,7 @@ var _ = Describe("Publisher Deployment cleanup", Serial, func() {
 	DescribeTable("validating Service-owned Deployments",
 		func(prepare func(*corev1.Service, *appsv1.Deployment), shouldRemain bool) {
 			service := cleanupService()
-			deployment := cleanupDeployment("avahi-"+service.Name, service.Namespace)
+			deployment := cleanupDeployment("avahi-service-"+service.Name, service.Namespace)
 			prepare(service, deployment)
 			if service.Name != "" {
 				desiredStatus := service.Status
@@ -92,7 +93,7 @@ var _ = Describe("Publisher Deployment cleanup", Serial, func() {
 		service.Status = corev1.ServiceStatus{}
 		Expect(k8sClient.Create(ctx, service)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, service) })
-		deployment := cleanupDeployment("avahi-"+service.Name, service.Namespace)
+		deployment := cleanupDeployment("avahi-service-"+service.Name, service.Namespace)
 		setControllerOwner(deployment, "v1", "Service", service.Name, types.UID("stale"))
 		Expect(k8sClient.Create(ctx, deployment)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, deployment) })

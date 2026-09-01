@@ -78,11 +78,11 @@ func invalidServiceDeployment(
 		return false, getErr
 	}
 	if service.UID != owner.UID ||
-		client.ObjectKeyFromObject(deployment) != serviceDeploymentKey(serviceKey) ||
+		client.ObjectKeyFromObject(deployment) != publicationDeploymentKey(serviceKind, serviceKey, service.UID) ||
 		service.DeletionTimestamp != nil {
 		return true, nil
 	}
-	hostnames := expandHostnames(&service, serviceHostnames(&service), config.HostnameSuffix)
+	hostnames := config.PublishableHostnames(serviceKey, serviceHostnames(&service))
 	return len(hostnames) == 0 || serviceAddress(&service) == "", nil
 }
 

@@ -6,10 +6,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -18,8 +16,9 @@ import (
 
 // Service reconciles annotated Kubernetes Services.
 type Service struct {
-	client client.Client
-	config *AvahiConfig
+	client      client.Client
+	config      *AvahiConfig
+	deployments DeploymentHandler
 }
 
 var _ AvahiReconciler = (*Service)(nil)
@@ -42,15 +41,26 @@ func (s *Service) Reconcile(
 		return result, getErr
 	}
 
-	hostnames := expandHostnames(&service, serviceHostnames(&service), s.config.HostnameSuffix)
+	hostnames := s.config.PublishableHostnames(
+		client.ObjectKeyFromObject(&service),
+		serviceHostnames(&service),
+	)
 	address := serviceAddress(&service)
 	if service.Name != "" &&
 		service.DeletionTimestamp == nil &&
 		len(hostnames) > 0 &&
 		address != "" {
-		return result, s.applyDeployment(ctx, &service, hostnames, address)
+		_, publishErr := s.deployments.Publish(ctx, AvahiPublication{
+			Owner: &service,
+			Labels: map[string]string{
+				"service.kubernetes.io/name":      service.Name,
+				"service.kubernetes.io/namespace": service.Namespace,
+			},
+			Addresses: []AvahiAddress{{Address: address, Hostnames: hostnames}},
+		})
+		return result, publishErr
 	}
-	return result, deleteDeployment(ctx, s.client, serviceDeploymentKey(request.NamespacedName))
+	return result, s.deployments.Delete(ctx, serviceKind, request.NamespacedName)
 }
 
 func (s *Service) SetupWithManager(
@@ -62,30 +72,15 @@ func (s *Service) SetupWithManager(
 	}
 	s.client = mgr.GetClient()
 	s.config = config
+	var handlerErr error
+	s.deployments, handlerErr = NewDeploymentHandler(s.client, config)
+	if handlerErr != nil {
+		return handlerErr
+	}
 	return controllerruntime.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).
 		Owns(&appsv1.Deployment{}).
 		Complete(s)
-}
-
-func (s *Service) applyDeployment(
-	ctx context.Context,
-	service *corev1.Service,
-	hostnames []string,
-	address string,
-) error {
-	key := serviceDeploymentKey(client.ObjectKeyFromObject(service))
-	return upsertDeployment(ctx, s.client, key, func(deployment *appsv1.Deployment) error {
-		if ownerErr := controllerutil.SetOwnerReference(service, deployment, s.client.Scheme()); ownerErr != nil {
-			return ownerErr
-		}
-		publications := []avahiPublication{{address: address, hostnames: hostnames}}
-		applyPublisherDeployment(deployment, s.config, publications, map[string]string{
-			"service.kubernetes.io/name":      service.Name,
-			"service.kubernetes.io/namespace": service.Namespace,
-		}, false)
-		return nil
-	})
 }
 
 func serviceHostnames(service *corev1.Service) []string {
@@ -103,8 +98,4 @@ func serviceAddress(service *corev1.Service) string {
 		}
 	}
 	return ""
-}
-
-func serviceDeploymentKey(serviceKey types.NamespacedName) client.ObjectKey {
-	return client.ObjectKey{Namespace: serviceKey.Namespace, Name: "avahi-" + serviceKey.Name}
 }
