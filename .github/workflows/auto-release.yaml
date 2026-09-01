@@ -285,3 +285,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.plan.outputs.app_version }}
         run: gh release create "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --generate-notes --verify-tag
+
+  cleanup:
+    needs: [plan, publish]
+    if: needs.plan.outputs.release == 'true' && github.event.inputs.dry-run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup release branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_LABEL: ${{ needs.plan.outputs.release_label }}
+        run: |
+          RELEASE_BRANCH="release-${RELEASE_LABEL}"
+          
+          # Check if the PR was merged and the branch exists
+          if gh pr list --head "${RELEASE_BRANCH}" --state merged | grep -q "Release ${RELEASE_LABEL}"; then
+            echo "PR has been merged, cleaning up release branch"
+            git push origin --delete "${RELEASE_BRANCH}"
+          fi

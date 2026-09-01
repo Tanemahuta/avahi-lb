@@ -29,6 +29,7 @@ jobs:
         run: |
           pr_author="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.user.login')"
           pr_head_sha="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          pr_head_ref="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.ref')"
 
           if [[ "${pr_head_sha}" != "${TESTED_SHA}" ]]; then
             echo "The PR changed after this verification run; skipping merge."
@@ -40,4 +41,11 @@ jobs:
             exit 0
           fi
 
+          # Merge the PR
           gh pr merge "${PR_NUMBER}" --repo "${REPOSITORY}" --auto --merge
+          
+          # Delete the branch after merging (if it's a release branch)
+          if [[ "${pr_head_ref}" == "release-"* ]]; then
+            echo "Deleting release branch ${pr_head_ref}"
+            gh api --method DELETE "repos/${REPOSITORY}/git/refs/heads/${pr_head_ref}"
+          fi
