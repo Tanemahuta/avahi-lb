@@ -40,6 +40,12 @@ type Ingress struct {
 // load-balancer IP address.
 type IngressPublicationGroups map[string]map[string][]string
 
+type ingressPublication struct {
+	className string
+	address   string
+	hostnames []string
+}
+
 var _ AvahiReconciler = (*Ingress)(nil)
 
 // NewIngress creates an Ingress reconciler.
@@ -122,33 +128,11 @@ func groupIngresses(
 ) IngressPublicationGroups {
 	groups := make(IngressPublicationGroups)
 	for index := range ingresses {
-		ingress := &ingresses[index]
-		if ingress.DeletionTimestamp != nil {
+		publication, ok := publicationForIngress(&ingresses[index], defaultClass, config, filter)
+		if !ok {
 			continue
 		}
-		address := ingressAddress(ingress)
-		if address == "" {
-			continue
-		}
-		className := ingressClassName(ingress, defaultClass)
-		if className == "" {
-			continue
-		}
-		var hostnames []string
-		key := client.ObjectKeyFromObject(ingress)
-		if filter {
-			hostnames = config.PublishableHostnames(key, ingressHostnames(ingress))
-		} else {
-			hostnames = config.ExpandHostnames(key, ingressHostnames(ingress))
-		}
-		for _, hostname := range hostnames {
-			if groups[className] == nil {
-				groups[className] = make(map[string][]string)
-			}
-			if !slices.Contains(groups[className][address], hostname) {
-				groups[className][address] = append(groups[className][address], hostname)
-			}
-		}
+		addIngressPublication(groups, publication)
 	}
 	for _, addresses := range groups {
 		for address := range addresses {
@@ -156,6 +140,42 @@ func groupIngresses(
 		}
 	}
 	return groups
+}
+
+func publicationForIngress(
+	ingress *networkingv1.Ingress,
+	defaultClass string,
+	config *AvahiConfig,
+	filter bool,
+) (ingressPublication, bool) {
+	address := ingressAddress(ingress)
+	className := ingressClassName(ingress, defaultClass)
+	if ingress.DeletionTimestamp != nil || address == "" || className == "" {
+		return ingressPublication{}, false
+	}
+	hostnames := ingressHostnames(ingress)
+	key := client.ObjectKeyFromObject(ingress)
+	if filter {
+		hostnames = config.PublishableHostnames(key, hostnames)
+	} else {
+		hostnames = config.ExpandHostnames(key, hostnames)
+	}
+	if len(hostnames) == 0 {
+		return ingressPublication{}, false
+	}
+	return ingressPublication{className: className, address: address, hostnames: hostnames}, true
+}
+
+func addIngressPublication(groups IngressPublicationGroups, publication ingressPublication) {
+	if groups[publication.className] == nil {
+		groups[publication.className] = make(map[string][]string)
+	}
+	for _, hostname := range publication.hostnames {
+		hostnames := groups[publication.className][publication.address]
+		if !slices.Contains(hostnames, hostname) {
+			groups[publication.className][publication.address] = append(hostnames, hostname)
+		}
+	}
 }
 
 func (i *Ingress) applyPublications(
