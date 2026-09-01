@@ -4,7 +4,7 @@ name: auto-merge
 # Other required checks remain enforced by GitHub's auto-merge mechanism.
 on:
   workflow_run:
-    workflows: [CodeQL,verify]
+    workflows: [CodeQL]
     types: [completed]
 
 permissions:
@@ -30,22 +30,20 @@ jobs:
           pr_author="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.user.login')"
           pr_head_sha="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
           pr_head_ref="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.ref')"
+          is_auto_release="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq 'any(.labels[].name; . == "auto-release")')"
 
           if [[ "${pr_head_sha}" != "${TESTED_SHA}" ]]; then
             echo "The PR changed after this verification run; skipping merge."
             exit 0
           fi
 
-          if [[ "${pr_author}" != "${REPOSITORY_OWNER}" && "${pr_author}" != "dependabot[bot]" ]]; then
+          if [[ "${pr_author}" != "${REPOSITORY_OWNER}" && "${pr_author}" != "dependabot[bot]" ]] &&
+            [[ "${pr_author}" != "github-actions[bot]" || "${is_auto_release}" != "true" ]]; then
             echo "PR author is not eligible for automatic merging."
             exit 0
           fi
 
           # Merge the PR
-          gh pr merge "${PR_NUMBER}" --repo "${REPOSITORY}" --auto --merge
-          
-          # Delete the branch after merging (if it's a release branch)
-          if [[ "${pr_head_ref}" == "release-"* ]]; then
-            echo "Deleting release branch ${pr_head_ref}"
-            gh api --method DELETE "repos/${REPOSITORY}/git/refs/heads/${pr_head_ref}"
-          fi
+          merge_args=("${PR_NUMBER}" --repo "${REPOSITORY}" --auto --merge)
+          [[ "${pr_head_ref}" == release-* ]] && merge_args+=(--delete-branch)
+          gh pr merge "${merge_args[@]}"

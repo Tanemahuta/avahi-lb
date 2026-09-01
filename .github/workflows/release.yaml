@@ -1,0 +1,75 @@
+name: release
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'auto-release')
+    runs-on: ubuntu-latest
+    outputs:
+      release_app: ${{ steps.version.outputs.release_app }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - name: Checkout merged main
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Read release and create application tag
+        id: version
+        env:
+          RELEASE_APP: ${{ contains(github.event.pull_request.labels.*.name, 'auto-release-app') }}
+        run: |
+          version="$(awk '$1 == "appVersion:" { gsub(/"/, "", $2); print $2 }' charts/avahi-lb/Chart.yaml)"
+          tag="v${version}"
+          sha="$(git rev-parse HEAD)"
+
+          if [[ "${RELEASE_APP}" == "true" ]]; then
+            if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+              tagged_sha="$(git rev-list -n 1 "${tag}")"
+              if [[ "${tagged_sha}" != "${sha}" ]]; then
+                echo "${tag} already points to ${tagged_sha}, not ${sha}." >&2
+                exit 1
+              fi
+            else
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git tag -a "${tag}" -m "${tag}"
+              git push origin "${tag}"
+            fi
+          fi
+
+          echo "release_app=${RELEASE_APP}" >>"${GITHUB_OUTPUT}"
+          echo "version=${version}" >>"${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >>"${GITHUB_OUTPUT}"
+          echo "sha=${sha}" >>"${GITHUB_OUTPUT}"
+
+  publish:
+    needs: prepare
+    uses: ./.github/workflows/publish.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+      publish-docker: ${{ needs.prepare.outputs.release_app == 'true' }}
+      publish-helm: true
+      app-version: ${{ needs.prepare.outputs.version }}
