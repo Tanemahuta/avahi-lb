@@ -28,6 +28,12 @@ The previous `KUBERNETES_CLUSTER_DOMAIN` variable remains supported as a
 fallback for compatibility. `AVAHI_PUBLISH_IMAGE` selects the publisher image;
 the Helm chart supplies its default value.
 
+`AVAHI_ALLOWED_TLDS` is a comma-separated allowlist of DNS suffixes that may
+be published. It defaults to `local`. Matching is case-insensitive and occurs
+on complete DNS label boundaries, so `local` permits both `host.local` and
+`host.cluster.local`, but not `host.notlocal`. Hostnames outside the allowlist
+are ignored.
+
 When publishing a service, add the annotation `service.beta.kubernetes.io/avahi-publish` and:
 
 - either set it to `"-"` in order to generate
@@ -78,6 +84,8 @@ The controller reads its configuration from the environment:
 
 - `AVAHI_HOSTNAME_SUFFIX` is the preferred suffix appended to generated
   hostnames.
+- `AVAHI_ALLOWED_TLDS` is the comma-separated publication allowlist and
+  defaults to `local`.
 - `AVAHI_PUBLISH_IMAGE` is required and selects the image used by publisher
   Deployments.
 - `AVAHI_PUBLISH_NAMESPACE` selects the namespace for aggregated Ingress

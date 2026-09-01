@@ -45,6 +45,8 @@ spec:
         env:
         - name: AVAHI_HOSTNAME_SUFFIX
           value: {{ quote .Values.kubernetesClusterDomain }}
+        - name: AVAHI_ALLOWED_TLDS
+          value: {{ quote .Values.allowedTLDs }}
         - name: AVAHI_PUBLISH_IMAGE
           value: {{ quote .Values.avahiPublishImage }}
         - name: AVAHI_PUBLISH_NAMESPACE

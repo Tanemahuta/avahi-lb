@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   namespace: test-namespace
-  name: avahi-test-name
+  name: avahi-service-test-name
   ownerReferences:
     - apiVersion: v1
       kind: Service

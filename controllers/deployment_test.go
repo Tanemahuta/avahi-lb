@@ -1,43 +1,60 @@
 package controllers //nolint:testpackage // Shared package-private helpers are tested directly.
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 var _ = Describe("Shared publisher Deployment helpers", func() {
-	It("expands and deduplicates hostnames while preserving their order", func() {
-		object := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
-			Name:      "traefik",
-			Namespace: "ingress-system",
-		}}
+	It("requires handler dependencies", func() {
+		_, err := NewDeploymentHandler(nil, &AvahiConfig{})
+		Expect(err).To(MatchError("deployment handler client must not be nil"))
 
-		Expect(expandHostnames(object, []string{
-			"-",
-			"dashboard",
-			"dashboard.cluster.local",
-			"qualified.example",
-			"dashboard",
-		}, "cluster.local")).To(Equal([]string{
-			"traefik.ingress-system.cluster.local",
-			"dashboard.cluster.local",
-			"qualified.example",
+		_, err = NewDeploymentHandler(fake.NewClientBuilder().Build(), nil)
+		Expect(err).To(MatchError("avahi config must not be nil"))
+	})
+
+	It("uses the owner UID when the generated name would exceed the DNS limit", func() {
+		key := publicationDeploymentKey("Service", types.NamespacedName{
+			Namespace: "apps",
+			Name:      strings.Repeat("a", maxDNSSubdomainLength),
+		}, types.UID("12345678-1234-1234-1234-123456789abc"))
+
+		Expect(key).To(Equal(types.NamespacedName{
+			Namespace: "apps",
+			Name:      "avahi-service-12345678-1234-1234-1234-123456789abc",
 		}))
+	})
+
+	It("bounds ownerless publication names with a deterministic hash", func() {
+		key := publicationDeploymentKey("Ingress", types.NamespacedName{
+			Namespace: "avahi-lb",
+			Name:      strings.Repeat("a", maxDNSSubdomainLength),
+		}, "")
+
+		Expect(key.Name).To(HaveLen(maxDNSSubdomainLength))
+		Expect(key.Name).To(HaveSuffix("-" + shortHash("avahi-ingress-"+
+			strings.Repeat("a", maxDNSSubdomainLength))))
 	})
 
 	DescribeTable("configures reverse publication",
 		func(disableReverse bool, expectedArgs []string) {
 			var deployment appsv1.Deployment
-			applyPublisherDeployment(
+			handler := kubernetesDeploymentHandler{config: &AvahiConfig{AvahiPublishImage: "publisher:test"}}
+			handler.apply(
 				&deployment,
-				&AvahiConfig{AvahiPublishImage: "publisher:test"},
-				[]avahiPublication{{address: "192.0.2.1", hostnames: []string{"host.cluster.local"}}},
-				map[string]string{"app": "publisher"},
-				disableReverse,
+				AvahiPublication{
+					Labels:         map[string]string{"app": "publisher"},
+					Addresses:      []AvahiAddress{{Address: "192.0.2.1", Hostnames: []string{"host.cluster.local"}}},
+					DisableReverse: disableReverse,
+				},
 			)
 
 			Expect(deployment.Spec.Template.Spec.Containers).To(HaveLen(1))
@@ -60,15 +77,17 @@ var _ = Describe("Shared publisher Deployment helpers", func() {
 
 	It("creates deterministically named containers for multiple addresses", func() {
 		var deployment appsv1.Deployment
-		applyPublisherDeployment(
+		handler := kubernetesDeploymentHandler{config: &AvahiConfig{AvahiPublishImage: "publisher:test"}}
+		handler.apply(
 			&deployment,
-			&AvahiConfig{AvahiPublishImage: "publisher:test"},
-			[]avahiPublication{
-				{address: "192.0.2.1", hostnames: []string{"first.example"}},
-				{address: "192.0.2.2", hostnames: []string{"second.example"}},
+			AvahiPublication{
+				Labels: map[string]string{"app": "publisher"},
+				Addresses: []AvahiAddress{
+					{Address: "192.0.2.1", Hostnames: []string{"first.example"}},
+					{Address: "192.0.2.2", Hostnames: []string{"second.example"}},
+				},
+				DisableReverse: true,
 			},
-			map[string]string{"app": "publisher"},
-			true,
 		)
 
 		Expect(deployment.Spec.Template.Spec.Containers).To(HaveExactElements(
@@ -83,9 +102,9 @@ var _ = Describe("Shared publisher Deployment helpers", func() {
 		Expect(publicationsByAddress(map[string][]string{
 			"192.0.2.2": {"second.example"},
 			"192.0.2.1": {"first.example"},
-		})).To(Equal([]avahiPublication{
-			{address: "192.0.2.1", hostnames: []string{"first.example"}},
-			{address: "192.0.2.2", hostnames: []string{"second.example"}},
+		})).To(Equal([]AvahiAddress{
+			{Address: "192.0.2.1", Hostnames: []string{"first.example"}},
+			{Address: "192.0.2.2", Hostnames: []string{"second.example"}},
 		}))
 	})
 
