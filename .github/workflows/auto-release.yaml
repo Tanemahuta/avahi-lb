@@ -28,6 +28,7 @@ jobs:
           ref: main
           fetch-depth: 0
           fetch-tags: true
+          token: ${{ secrets.AUTO_RELEASE_TOKEN || github.token }}
 
       - name: Read configured versions
         id: current
