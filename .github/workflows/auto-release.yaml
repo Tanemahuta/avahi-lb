@@ -1,0 +1,287 @@
+name: "auto-release"
+
+on:
+  schedule:
+    - cron: "23 23 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Run in dry-run mode without creating commits or PRs'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  pull-requests: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.release.outputs.release }}
+      release_app: ${{ steps.release.outputs.release_app }}
+      release_chart: ${{ steps.release.outputs.release_chart }}
+      app_version: ${{ steps.release.outputs.app_version }}
+      chart_version: ${{ steps.release.outputs.chart_version }}
+      release_label: ${{ steps.release.outputs.release_label }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Checkout main with release history
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Get current versions from tags
+        id: current
+        run: |
+          # Get latest chart version tag (e.g., avahi-lb-1.2.3)
+          CHART_TAG=$(git ls-remote --tags origin | grep "avahi-lb-" | sort -V | tail -n1 | cut -d'/' -f3)
+          if [ -z "$CHART_TAG" ]; then
+            # If no tags exist, default to 0.0.0
+            CHART_VERSION="0.0.0"
+          else
+            CHART_VERSION="${CHART_TAG#avahi-lb-}"
+          fi
+          
+          # Get latest app version tag (e.g., v1.2.3)
+          APP_TAG=$(git ls-remote --tags origin | grep "^v" | sort -V | tail -n1 | cut -d'/' -f3)
+          if [ -z "$APP_TAG" ]; then
+            # If no tags exist, default to 0.0.0
+            APP_VERSION="0.0.0"
+          else
+            APP_VERSION="${APP_TAG#v}"
+          fi
+          
+          echo "app=${APP_VERSION}" >>"${GITHUB_OUTPUT}"
+          echo "chart=${CHART_VERSION}" >>"${GITHUB_OUTPUT}"
+
+      # This action only calculates the implied version; it does not mutate the repository.
+      - name: Calculate application version
+        id: app
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          tag_prefix: "v"
+          change_path: >-
+            Dockerfile bundle.Dockerfile Makefile PROJECT bundle config controllers
+            go.mod go.sum main.go
+          major_pattern: '/!:|^breaking:|BREAKING CHANGE:/'
+          major_regexp_flags: "im"
+          minor_pattern: '/^(feat|feature)(\(.+\))?:/'
+          minor_regexp_flags: "im"
+          search_commit_body: true
+
+      - name: Calculate chart version
+        id: chart
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          tag_prefix: "avahi-lb-"
+          change_path: >-
+            charts/avahi-lb Dockerfile bundle.Dockerfile Makefile PROJECT bundle config
+            controllers go.mod go.sum main.go
+          major_pattern: '/!:|^breaking:|BREAKING CHANGE:/'
+          major_regexp_flags: "im"
+          minor_pattern: '/^(feat|feature)(\(.+\))?:/'
+          minor_regexp_flags: "im"
+          search_commit_body: true
+
+      - name: Compare application version with Chart.yaml
+        id: app-version
+        uses: madhead/semver-utils@v5.0.0
+        with:
+          version: ${{ steps.app.outputs.version }}
+          compare-to: ${{ steps.current.outputs.app }}
+          lenient: false
+      - name: Compare chart version with Chart.yaml
+        id: chart-version
+        uses: madhead/semver-utils@v5.0.0
+        with:
+          version: ${{ steps.chart.outputs.version }}
+          compare-to: ${{ steps.current.outputs.chart }}
+          lenient: false
+
+      - name: Prepare release
+        id: release
+        env:
+          APP_CHANGED: ${{ steps.app.outputs.changed }}
+          APP_TYPE: ${{ steps.app.outputs.version_type }}
+          APP_VERSION: ${{ steps.app.outputs.version }}
+          APP_COMPARISON: ${{ steps.app-version.outputs.comparison-result }}
+          CURRENT_APP_VERSION: ${{ steps.current.outputs.app }}
+          CHART_CHANGED: ${{ steps.chart.outputs.changed }}
+          CHART_TYPE: ${{ steps.chart.outputs.version_type }}
+          CHART_VERSION: ${{ steps.chart.outputs.version }}
+          CHART_COMPARISON: ${{ steps.chart-version.outputs.comparison-result }}
+          CURRENT_CHART_VERSION: ${{ steps.current.outputs.chart }}
+          DRY_RUN: ${{ github.event.inputs.dry-run }}
+        run: |
+          release_app=false
+          release_chart=false
+          
+          # Check if there are any actual changes that would warrant a release
+          # If all changes are chores (no feat, fix, breaking, etc.), don't create a release
+          if [[ "${APP_CHANGED}" == "true" && "${APP_TYPE}" != "none" ]]; then
+            release_app=true
+          fi
+          if [[ "${CHART_CHANGED}" == "true" && "${CHART_TYPE}" != "none" ]]; then
+            release_chart=true
+          fi
+
+          # If there are no meaningful changes, don't create a release
+          if [[ "${release_app}" == "false" && "${release_chart}" == "false" ]]; then
+            echo "No meaningful changes detected. Skipping release."
+            echo "release=false" >>"${GITHUB_OUTPUT}"
+            echo "release_app=false" >>"${GITHUB_OUTPUT}"
+            echo "release_chart=false" >>"${GITHUB_OUTPUT}"
+            echo "app_version=${CURRENT_APP_VERSION}" >>"${GITHUB_OUTPUT}"
+            echo "chart_version=${CURRENT_CHART_VERSION}" >>"${GITHUB_OUTPUT}"
+            echo "release_label=none" >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          next_app_version="${APP_VERSION}"
+          next_chart_version="${CHART_VERSION}"
+          [[ "${APP_COMPARISON}" == "<" ]] && next_app_version="${CURRENT_APP_VERSION}"
+          [[ "${CHART_COMPARISON}" == "<" ]] && next_chart_version="${CURRENT_CHART_VERSION}"
+
+          if [[ "${release_app}" == "true" ]]; then
+            release_label="${next_app_version}"
+          else
+            next_app_version="${CURRENT_APP_VERSION}"
+            release_label="avahi-lb-${next_chart_version}"
+          fi
+
+          # If in dry-run mode, just output the results without making changes
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            echo "Dry run mode - would update chart version to ${next_chart_version} and app version to ${next_app_version}"
+            echo "release=true" >>"${GITHUB_OUTPUT}"
+            echo "release_app=${release_app}" >>"${GITHUB_OUTPUT}"
+            echo "release_chart=${release_chart}" >>"${GITHUB_OUTPUT}"
+            echo "app_version=${next_app_version}" >>"${GITHUB_OUTPUT}"
+            echo "chart_version=${next_chart_version}" >>"${GITHUB_OUTPUT}"
+            echo "release_label=${release_label}" >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${release_chart}" == "true" ]]; then
+            sed -i -E "s/^version: .*/version: ${next_chart_version}/" charts/avahi-lb/Chart.yaml
+            sed -i -E "s/^appVersion: .*/appVersion: \"${next_app_version}\"/" charts/avahi-lb/Chart.yaml
+          fi
+
+          echo "release=true" >>"${GITHUB_OUTPUT}"
+          echo "release_app=${release_app}" >>"${GITHUB_OUTPUT}"
+          echo "release_chart=${release_chart}" >>"${GITHUB_OUTPUT}"
+          echo "app_version=${next_app_version}" >>"${GITHUB_OUTPUT}"
+          echo "chart_version=${next_chart_version}" >>"${GITHUB_OUTPUT}"
+          echo "release_label=${release_label}" >>"${GITHUB_OUTPUT}"
+
+      - name: Set up Helm
+        if: steps.release.outputs.release_chart == 'true'
+        uses: ./.github/actions/helm-setup
+      - name: Validate release chart
+        if: steps.release.outputs.release_chart == 'true'
+        run: helm lint charts/avahi-lb
+      - name: Commit and push to release branch
+        id: commit
+        if: steps.release.outputs.release == 'true'
+        env:
+          APP_VERSION: ${{ steps.release.outputs.app_version }}
+          RELEASE_APP: ${{ steps.release.outputs.release_app }}
+          RELEASE_LABEL: ${{ steps.release.outputs.release_label }}
+          DRY_RUN: ${{ github.event.inputs.dry-run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Create a release branch
+          RELEASE_BRANCH="release-${RELEASE_LABEL}"
+          git checkout -b "${RELEASE_BRANCH}"
+          
+          git add charts/avahi-lb/Chart.yaml
+          git commit -m "auto-release: ${RELEASE_LABEL}"
+          
+          if [[ "${RELEASE_APP}" == "true" ]]; then
+            git tag -a "v${APP_VERSION}" -m "v${APP_VERSION}"
+          fi
+          
+          # Push the branch
+          if [[ "${DRY_RUN}" == "false" ]]; then
+            git push origin "${RELEASE_BRANCH}"
+            
+            # Create a pull request
+            PR_TITLE="Release ${RELEASE_LABEL}"
+            PR_BODY="This PR was automatically created by the auto-release workflow.\n\nIt updates the chart version to ${RELEASE_LABEL} and ensures all tests pass before merging to main.\n\nPlease review and merge this PR after verifying that all tests pass."
+            
+            gh pr create \
+              --title "${PR_TITLE}" \
+              --body "${PR_BODY}" \
+              --head "${RELEASE_BRANCH}" \
+              --base "main" \
+              --label "release"
+          else
+            echo "Dry run mode - skipping branch push and PR creation"
+          fi
+          
+          echo "sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
+
+  create-pr:
+    needs: plan
+    if: needs.plan.outputs.release == 'true' && github.event.inputs.dry-run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Create Pull Request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_LABEL: ${{ needs.plan.outputs.release_label }}
+        run: |
+          RELEASE_BRANCH="release-${RELEASE_LABEL}"
+          
+          # Create PR if it doesn't exist yet
+          if ! gh pr list --head "${RELEASE_BRANCH}" --state open | grep -q "Release ${RELEASE_LABEL}"; then
+            gh pr create \
+              --title "Release ${RELEASE_LABEL}" \
+              --body "This PR was automatically created by the auto-release workflow.\n\nIt updates the chart version to ${RELEASE_LABEL} and ensures all tests pass before merging to main.\n\nPlease review and merge this PR after verifying that all tests pass." \
+              --head "${RELEASE_BRANCH}" \
+              --base "main" \
+              --label "release"
+          fi
+
+  publish:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    uses: ./.github/workflows/publish.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    with:
+      ref: ${{ needs.plan.outputs.sha }}
+      publish-docker: ${{ needs.plan.outputs.release_app == 'true' }}
+      publish-helm: ${{ needs.plan.outputs.release_chart == 'true' }}
+      app-version: ${{ needs.plan.outputs.app_version }}
+
+  app-release:
+    needs: [plan, publish]
+    if: needs.plan.outputs.release_app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.app_version }}
+        run: gh release create "v${VERSION}" --repo "${GITHUB_REPOSITORY}" --generate-notes --verify-tag

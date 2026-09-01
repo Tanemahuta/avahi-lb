@@ -12,6 +12,7 @@ jobs:
       packages: write
       id-token: write
   publish:
+    if: startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/publish.yml
     needs: ["verify"]
     secrets: inherit
