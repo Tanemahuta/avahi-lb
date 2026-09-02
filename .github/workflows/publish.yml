@@ -38,9 +38,11 @@ jobs:
           RELEASE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
           version="$(awk '$1 == "appVersion:" { gsub(/"/, "", $2); print $2 }' charts/avahi-lb/Chart.yaml)"
-          echo "app=${RELEASE_APP}" >>"${GITHUB_OUTPUT}"
-          echo "version=${version}" >>"${GITHUB_OUTPUT}"
-          echo "sha=${RELEASE_SHA}" >>"${GITHUB_OUTPUT}"
+          {
+            echo "app=${RELEASE_APP}"
+            echo "version=${version}"
+            echo "sha=${RELEASE_SHA}"
+          } >>"${GITHUB_OUTPUT}"
 
   docker:
     needs: prepare
@@ -60,7 +62,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ needs.prepare.outputs.sha }}
       - name: image-name
-        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >>"${GITHUB_ENV}"
       # Install the cosign tool except on PR
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
