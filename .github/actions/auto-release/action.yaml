@@ -66,6 +66,17 @@ runs:
         compare-to: ${{ steps.current.outputs.chart }}
         lenient: false
 
+    - name: Compare application and chart versions
+      if: >-
+        steps.app.outputs.changed == 'true' && steps.app.outputs.version_type != 'none' &&
+        steps.chart.outputs.changed == 'true' && steps.chart.outputs.version_type != 'none'
+      id: app-chart-comparison
+      uses: madhead/semver-utils@v5.0.0
+      with:
+        version: ${{ steps.app.outputs.version }}
+        compare-to: ${{ steps.chart.outputs.version }}
+        lenient: false
+
     - name: Select release
       id: release
       shell: bash
@@ -75,6 +86,7 @@ runs:
         APP_TYPE: ${{ steps.app.outputs.version_type }}
         APP_VERSION: ${{ steps.app.outputs.version }}
         APP_COMPARISON: ${{ steps.app-comparison.outputs.comparison-result }}
+        APP_CHART_COMPARISON: ${{ steps.app-chart-comparison.outputs.comparison-result }}
         CHART_CHANGED: ${{ steps.chart.outputs.changed }}
         CHART_TYPE: ${{ steps.chart.outputs.version_type }}
         CHART_VERSION: ${{ steps.chart.outputs.version }}

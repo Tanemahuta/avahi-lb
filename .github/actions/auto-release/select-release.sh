@@ -25,9 +25,14 @@ if [[ "${app_release}" == "true" && "${chart_release}" != "true" ]]; then
   exit 1
 fi
 
+release_chart_version="${CHART_VERSION}"
+if [[ "${app_release}" == "true" && "${APP_CHART_COMPARISON}" == ">" ]]; then
+  release_chart_version="${APP_VERSION}"
+fi
+
 write_output release true
 write_output app_release "${app_release}"
-write_output chart "${CHART_VERSION}"
+write_output chart "${release_chart_version}"
 if [[ "${app_release}" == "true" ]]; then
   write_output kind app
   write_output app "${APP_VERSION}"
