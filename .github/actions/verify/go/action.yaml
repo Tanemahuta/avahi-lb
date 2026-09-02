@@ -1,0 +1,27 @@
+name: verify-go
+description: Lint and test the Go application
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/go-setup
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v9.3.0
+      with:
+        version: v2.12
+        only-new-issues: true
+    - name: Update Go report
+      uses: creekorful/goreportcard-action@v1.0
+    - name: Run tests
+      shell: bash
+      run: |
+        go run github.com/onsi/ginkgo/v2/ginkgo -r --randomize-all --randomize-suites \
+          --fail-on-pending --keep-going --trace \
+          --cover --coverprofile=cover.profile \
+          --json-report=test-report.json \
+          --race --junit-report=test-report.xml \
+          ./...
+    - name: Upload coverage
+      uses: codecov/codecov-action@v7.0.0
+      with:
+        files: cover.profile

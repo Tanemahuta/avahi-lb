@@ -1,0 +1,31 @@
+name: verify-helm
+description: Lint and install the Helm chart using the verified image
+
+inputs:
+  image:
+    description: Locally loaded image used by the chart installation
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/helm-setup
+    - name: Lint chart
+      shell: bash
+      run: ct lint --target-branch "${{ github.event.repository.default_branch }}"
+    - name: Create kind cluster
+      uses: helm/kind-action@v1.14.0
+    - name: Install chart
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        repository="${IMAGE%:*}"
+        tag="${IMAGE##*:}"
+        kind load docker-image "${IMAGE}" --name chart-testing
+        ct install \
+          --target-branch "${{ github.event.repository.default_branch }}" \
+          --helm-extra-set-args "--set-string=controllerManager.manager.image.tag=${tag} \
+          --set-string=controllerManager.manager.image.repository=${repository} \
+          --set=config.disableValidation=true" \
+          --debug

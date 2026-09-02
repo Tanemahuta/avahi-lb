@@ -1,0 +1,25 @@
+name: verify-docker
+description: Lint and build the container image
+
+inputs:
+  image:
+    description: Image reference to build and load
+    required: true
+  load:
+    description: Load the built image into the local Docker daemon
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Lint Dockerfile
+      uses: hadolint/hadolint-action@v3.5.0
+      with:
+        dockerfile: Dockerfile
+    - name: Build image
+      uses: ./.github/actions/docker-build
+      with:
+        tags: ${{ inputs.image }}
+        push: false
+        load: ${{ inputs.load }}
