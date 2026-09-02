@@ -5,6 +5,9 @@ inputs:
   token:
     description: Token used to authenticate
     required: true
+  merge-token:
+    description: Token used to enable auto-merge and trigger follow-up workflows
+    required: true
   dependabot-approve:
     description: Semicolon-separated patch|minor|major=*|dependency-type[,dependency-type] rules
     required: false
@@ -70,6 +73,6 @@ runs:
       if: steps.eligibility.outputs.eligible == 'true'
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.token }}
+        GH_TOKEN: ${{ inputs.merge-token }}
         PR_URL: ${{ github.event.pull_request.html_url }}
       run: gh pr merge "${PR_URL}" --auto --merge
