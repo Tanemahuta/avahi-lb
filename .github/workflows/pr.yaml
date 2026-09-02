@@ -1,0 +1,24 @@
+name: pull request automation
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  approve-and-enable-auto-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted automation
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Approve eligible pull request and enable auto-merge
+        uses: ./.github/actions/auto-approve
+        with:
+          token: ${{ github.token }}

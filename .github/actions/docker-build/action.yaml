@@ -14,17 +14,26 @@ inputs:
     description: "true if to load the image"
   platforms:
     required: false
-    description: "optional platforms to be used"
+    default: "linux/amd64"
+    description: "platforms to be built"
+  version:
+    required: false
+    description: "version embedded in the image"
 outputs:
   digest:
     description: "digest of the built image"
     value: ${{ steps.docker-build.outputs.digest }}
-  imageid:
-    description: "id of the built image"
-    value: ${{ steps.docker-build.outputs.imageid }}
 runs:
   using: composite
   steps:
+    - name: Set up Docker builder
+      uses: ./.github/actions/docker-setup
+      with:
+        platforms: ${{ inputs.platforms }}
+    - name: Resolve checked-out commit
+      id: source
+      shell: bash
+      run: echo "sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
     # Build and push Docker image with Buildx (don't push on PR)
     # https://github.com/docker/build-push-action
     - name: Build docker image
@@ -36,8 +45,8 @@ runs:
         push: ${{ inputs.push }}
         platforms: ${{ inputs.platforms }}
         build-args: |
-          VERSION=${{ github.ref_name }}
-          COMMIT_SHA=${{ github.sha }}
+          VERSION=${{ inputs.version || github.ref_name }}
+          COMMIT_SHA=${{ steps.source.outputs.sha }}
         tags: ${{ inputs.tags }}
         cache-from: type=gha
         cache-to: type=gha,mode=max,ignore-error=true

@@ -16,10 +16,11 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
-  release-pr:
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main with release history
@@ -29,149 +30,8 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           token: ${{ secrets.AUTO_RELEASE_TOKEN || github.token }}
-
-      - name: Read configured versions
-        id: current
-        run: |
-          echo "app=$(awk '$1 == "appVersion:" { gsub(/"/, "", $2); print $2 }' charts/avahi-lb/Chart.yaml)" >>"${GITHUB_OUTPUT}"
-          echo "chart=$(awk '$1 == "version:" { print $2; exit }' charts/avahi-lb/Chart.yaml)" >>"${GITHUB_OUTPUT}"
-
-      - name: Calculate application version
-        id: app
-        uses: paulhatch/semantic-version@v5.4.0
+      - name: Prepare release pull request
+        uses: ./.github/actions/auto-release
         with:
-          tag_prefix: v
-          change_path: >-
-            Dockerfile bundle.Dockerfile Makefile PROJECT bundle config controllers
-            go.mod go.sum main.go
-          major_pattern: '/!:|^breaking:|BREAKING CHANGE:/'
-          major_regexp_flags: im
-          minor_pattern: '/^(feat|feature)(\(.+\))?:/'
-          minor_regexp_flags: im
-          search_commit_body: true
-
-      - name: Compare application version with Chart.yaml
-        if: steps.app.outputs.changed == 'true' && steps.app.outputs.version_type != 'none'
-        id: app-version
-        uses: madhead/semver-utils@v5.0.0
-        with:
-          version: ${{ steps.app.outputs.version }}
-          compare-to: ${{ steps.current.outputs.app }}
-          lenient: false
-
-      - name: Calculate chart version
-        id: chart
-        uses: paulhatch/semantic-version@v5.4.0
-        with:
-          tag_prefix: avahi-lb-
-          change_path: >-
-            charts/avahi-lb Dockerfile bundle.Dockerfile Makefile PROJECT bundle config
-            controllers go.mod go.sum main.go
-          major_pattern: '/!:|^breaking:|BREAKING CHANGE:/'
-          major_regexp_flags: im
-          minor_pattern: '/^(feat|feature)(\(.+\))?:/'
-          minor_regexp_flags: im
-          search_commit_body: true
-
-      - name: Compare chart version with Chart.yaml
-        if: steps.chart.outputs.changed == 'true' && steps.chart.outputs.version_type != 'none'
-        id: chart-version
-        uses: madhead/semver-utils@v5.0.0
-        with:
-          version: ${{ steps.chart.outputs.version }}
-          compare-to: ${{ steps.current.outputs.chart }}
-          lenient: false
-
-      - name: Select release versions
-        id: release
-        env:
-          APP_CHANGED: ${{ steps.app.outputs.changed }}
-          APP_TYPE: ${{ steps.app.outputs.version_type }}
-          APP_VERSION: ${{ steps.app.outputs.version }}
-          APP_COMPARISON: ${{ steps.app-version.outputs.comparison-result }}
-          CHART_CHANGED: ${{ steps.chart.outputs.changed }}
-          CHART_TYPE: ${{ steps.chart.outputs.version_type }}
-          CHART_VERSION: ${{ steps.chart.outputs.version }}
-          CHART_COMPARISON: ${{ steps.chart-version.outputs.comparison-result }}
-          CURRENT_APP_VERSION: ${{ steps.current.outputs.app }}
-          CURRENT_CHART_VERSION: ${{ steps.current.outputs.chart }}
-        run: |
-          release_app=false
-          release_chart=false
-          [[ "${APP_CHANGED}" == "true" && "${APP_TYPE}" != "none" ]] && release_app=true
-          [[ "${CHART_CHANGED}" == "true" && "${CHART_TYPE}" != "none" ]] && release_chart=true
-
-          if [[ "${release_app}" == "false" && "${release_chart}" == "false" ]]; then
-            echo "No application or chart release is pending."
-            echo "release=false" >>"${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          next_app_version="${CURRENT_APP_VERSION}"
-          next_chart_version="${CHART_VERSION}"
-          if [[ "${release_app}" == "true" ]]; then
-            next_app_version="${APP_VERSION}"
-            [[ "${APP_COMPARISON}" == "<" ]] && next_app_version="${CURRENT_APP_VERSION}"
-            kind=app
-          else
-            kind=chart
-          fi
-          [[ "${CHART_COMPARISON}" == "<" ]] && next_chart_version="${CURRENT_CHART_VERSION}"
-
-          echo "release=true" >>"${GITHUB_OUTPUT}"
-          echo "release_app=${release_app}" >>"${GITHUB_OUTPUT}"
-          echo "release_chart=${release_chart}" >>"${GITHUB_OUTPUT}"
-          echo "kind=${kind}" >>"${GITHUB_OUTPUT}"
-          echo "app=${next_app_version}" >>"${GITHUB_OUTPUT}"
-          echo "chart=${next_chart_version}" >>"${GITHUB_OUTPUT}"
-
-      - name: Report dry run
-        if: steps.release.outputs.release == 'true' && inputs.dry-run
-        env:
-          RELEASE_KIND: ${{ steps.release.outputs.kind }}
-          APP_VERSION: ${{ steps.release.outputs.app }}
-          CHART_VERSION: ${{ steps.release.outputs.chart }}
-        run: echo "Would create a ${RELEASE_KIND} release PR with app ${APP_VERSION} and chart ${CHART_VERSION}."
-
-      - name: Create release pull request
-        if: steps.release.outputs.release == 'true' && !inputs.dry-run
-        env:
-          GH_TOKEN: ${{ secrets.AUTO_RELEASE_TOKEN || github.token }}
-          APP_VERSION: ${{ steps.release.outputs.app }}
-          CHART_VERSION: ${{ steps.release.outputs.chart }}
-          RELEASE_APP: ${{ steps.release.outputs.release_app }}
-          RELEASE_KIND: ${{ steps.release.outputs.kind }}
-        run: |
-          if [[ "${RELEASE_KIND}" == "app" ]]; then
-            release_name="v${APP_VERSION}"
-          else
-            release_name="avahi-lb-${CHART_VERSION}"
-          fi
-          if gh pr list --repo "${GITHUB_REPOSITORY}" --state open \
-            --label auto-release --json number --jq 'length > 0' | grep -qx true; then
-            echo "An auto-release PR is already open."
-            exit 0
-          fi
-          branch="release-${release_name}-${GITHUB_RUN_ID}"
-
-          sed -i -E "s/^version: .*/version: ${CHART_VERSION}/" charts/avahi-lb/Chart.yaml
-          if [[ "${RELEASE_APP}" == "true" ]]; then
-            sed -i -E "s/^appVersion: .*/appVersion: \"${APP_VERSION}\"/" charts/avahi-lb/Chart.yaml
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "${branch}"
-          git add charts/avahi-lb/Chart.yaml
-          git commit --allow-empty -m "auto-release: ${release_name}"
-          git push origin "${branch}"
-
-          gh label create auto-release --repo "${GITHUB_REPOSITORY}" \
-            --description "Automated release" --color 1d76db --force
-          gh label create "auto-release-${RELEASE_KIND}" --repo "${GITHUB_REPOSITORY}" \
-            --description "Automated ${RELEASE_KIND} release" --color 1d76db --force
-          gh pr create --repo "${GITHUB_REPOSITORY}" \
-            --base main --head "${branch}" \
-            --title "auto-release: ${release_name}" \
-            --body "Bumps the application to ${APP_VERSION} and the Helm chart to ${CHART_VERSION}." \
-            --label auto-release --label "auto-release-${RELEASE_KIND}"
+          token: ${{ secrets.AUTO_RELEASE_TOKEN || github.token }}
+          dry-run: ${{ inputs.dry-run || false }}

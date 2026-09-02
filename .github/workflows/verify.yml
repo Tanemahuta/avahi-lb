@@ -1,78 +1,140 @@
-name: "verify"
+name: verify
+
 on:
   pull_request:
-    branches: ["main"]
-  workflow_call:
-    inputs: {}
+    branches: [main]
   workflow_dispatch:
-    inputs: {}
 
-# A pull-request run and a branch run for the same head branch share one group.
-# Once a PR exists, its run supersedes any branch run still in progress.
 concurrency:
   group: verify-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
-  fullbuild:
-    runs-on: ubuntu-latest
-    outputs:
-      run: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
-    steps:
-      - name: run
-        run: ""
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
-      golang: ${{ steps.changes.outputs.golang == 'true' }}
-      docker: ${{ steps.changes.outputs.docker == 'true'}}
-      helm: ${{ steps.changes.outputs.helm == 'true' }}
+      go: ${{ steps.changes.outputs.go }}
+      docker: ${{ steps.changes.outputs.docker }}
+      helm: ${{ steps.changes.outputs.helm }}
+      actions: ${{ steps.changes.outputs.actions }}
     steps:
-      # Checkout
-      - name: checkout
-        uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-      # Determine changes
-      - uses: dorny/paths-filter@v4.0.3
+      - name: Detect changed components
+        uses: dorny/paths-filter@v4.0.3
         id: changes
         with:
           filters: |
-            golang:
+            go:
               - '**/*.go'
               - '**/testdata/**'
               - 'go.mod'
               - 'go.sum'
               - '.golangci.yaml'
               - '.github/actions/go-*/*.yaml'
-              - '.github/workflows/*-go.yaml'
+              - '.github/actions/verify/go/**'
             helm:
               - 'charts/**'
               - '.yamllint'
               - '.github/actions/helm-*/*.yaml'
-              - '.github/workflows/*-helm.yaml'
+              - '.github/actions/verify/helm/**'
             docker:
               - 'Dockerfile'
               - '.dockerignore'
               - '.hadolint.yaml'
               - 'buildinfo/*.sh'
               - '.github/actions/docker-*/*.yaml'
-              - '.github/workflows/*-docker.yaml'
-  golang:
-    needs:
-      - changes
-      - fullbuild
-    uses: ./.github/workflows/verify-go.yaml
-    if: needs.changes.outputs.golang == 'true' || needs.fullbuild.outputs.run
+              - '.github/actions/verify/docker/**'
+            actions:
+              - '.github/actions/**'
+              - '.github/workflows/**'
+              - '.github/dependabot.yml'
+
+  go:
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/verify/go
+
   docker:
-    needs:
-      - changes
-      - fullbuild
-    uses: ./.github/workflows/verify-docker.yaml
-    if: needs.changes.outputs.golang == 'true' || needs.changes.outputs.docker == 'true' || needs.fullbuild.outputs.run
+    needs: changes
+    if: >-
+      needs.changes.outputs.go == 'true' ||
+      needs.changes.outputs.docker == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Set image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >>"${GITHUB_ENV}"
+      - uses: ./.github/actions/verify/docker
+        with:
+          image: ${{ env.IMAGE_NAME }}
+          load: false
+
   helm:
-    needs:
-      - changes
-      - fullbuild
-    uses: ./.github/workflows/verify-helm.yaml
-    if: needs.changes.outputs.helm == 'true' || startsWith(github.ref, 'refs/tags/') || needs.fullbuild.outputs.run
+    needs: changes
+    if: >-
+      needs.changes.outputs.go == 'true' ||
+      needs.changes.outputs.docker == 'true' ||
+      needs.changes.outputs.helm == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Set image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >>"${GITHUB_ENV}"
+      - name: Build test image
+        uses: ./.github/actions/docker-build
+        with:
+          tags: ${{ env.IMAGE_NAME }}
+          push: false
+          load: true
+      - uses: ./.github/actions/verify/helm
+        with:
+          image: ${{ env.IMAGE_NAME }}
+
+  actions:
+    needs: changes
+    if: needs.changes.outputs.actions == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/verify/actionlint
+
+  verification:
+    if: always()
+    needs: [changes, go, docker, helm, actions]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require successful selected checks
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          GO: ${{ needs.go.result }}
+          DOCKER: ${{ needs.docker.result }}
+          HELM: ${{ needs.helm.result }}
+          ACTIONS: ${{ needs.actions.result }}
+        run: |
+          for result in "${CHANGES}" "${GO}" "${DOCKER}" "${HELM}" "${ACTIONS}"; do
+            [[ "${result}" == "success" || "${result}" == "skipped" ]] || exit 1
+          done

@@ -1,0 +1,104 @@
+name: auto-release
+description: Calculate application and chart versions and create a release pull request
+
+inputs:
+  token:
+    description: Token used to create the release branch and pull request
+    required: true
+  dry-run:
+    description: Report the calculated release without making changes
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Read configured versions
+      id: current
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "${ACTION_PATH}/read-versions.sh"
+
+    - name: Calculate application version
+      id: app
+      uses: paulhatch/semantic-version@v5.4.0
+      with:
+        tag_prefix: v
+        change_path: >-
+          Dockerfile bundle.Dockerfile .dockerignore Makefile PROJECT bundle config controllers
+          go.mod go.sum main.go
+        major_pattern: '/!:|^breaking:|BREAKING CHANGE:/'
+        major_regexp_flags: im
+        minor_pattern: '/^(feat|feature)(\(.+\))?:/'
+        minor_regexp_flags: im
+        search_commit_body: true
+
+    - name: Compare application version
+      if: steps.app.outputs.changed == 'true' && steps.app.outputs.version_type != 'none'
+      id: app-comparison
+      uses: madhead/semver-utils@v5.0.0
+      with:
+        version: ${{ steps.app.outputs.version }}
+        compare-to: ${{ steps.current.outputs.app }}
+        lenient: false
+
+    - name: Calculate chart version
+      id: chart
+      uses: paulhatch/semantic-version@v5.4.0
+      with:
+        tag_prefix: avahi-lb-
+        change_path: >-
+          charts/avahi-lb Dockerfile bundle.Dockerfile .dockerignore Makefile PROJECT bundle config
+          controllers go.mod go.sum main.go
+        major_pattern: '/!:|^breaking:|BREAKING CHANGE:/'
+        major_regexp_flags: im
+        minor_pattern: '/^(feat|feature)(\(.+\))?:/'
+        minor_regexp_flags: im
+        search_commit_body: true
+
+    - name: Compare chart version
+      if: steps.chart.outputs.changed == 'true' && steps.chart.outputs.version_type != 'none'
+      id: chart-comparison
+      uses: madhead/semver-utils@v5.0.0
+      with:
+        version: ${{ steps.chart.outputs.version }}
+        compare-to: ${{ steps.current.outputs.chart }}
+        lenient: false
+
+    - name: Select release
+      id: release
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        APP_CHANGED: ${{ steps.app.outputs.changed }}
+        APP_TYPE: ${{ steps.app.outputs.version_type }}
+        APP_VERSION: ${{ steps.app.outputs.version }}
+        APP_COMPARISON: ${{ steps.app-comparison.outputs.comparison-result }}
+        CHART_CHANGED: ${{ steps.chart.outputs.changed }}
+        CHART_TYPE: ${{ steps.chart.outputs.version_type }}
+        CHART_VERSION: ${{ steps.chart.outputs.version }}
+        CHART_COMPARISON: ${{ steps.chart-comparison.outputs.comparison-result }}
+        CURRENT_APP_VERSION: ${{ steps.current.outputs.app }}
+      run: bash "${ACTION_PATH}/select-release.sh"
+
+    - name: Report dry run
+      if: steps.release.outputs.release == 'true' && inputs.dry-run == 'true'
+      shell: bash
+      env:
+        RELEASE_KIND: ${{ steps.release.outputs.kind }}
+        APP_VERSION: ${{ steps.release.outputs.app }}
+        CHART_VERSION: ${{ steps.release.outputs.chart }}
+      run: echo "Would create a ${RELEASE_KIND} release PR with app ${APP_VERSION} and chart ${CHART_VERSION}."
+
+    - name: Create release pull request
+      if: steps.release.outputs.release == 'true' && inputs.dry-run != 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.token }}
+        APP_VERSION: ${{ steps.release.outputs.app }}
+        CHART_VERSION: ${{ steps.release.outputs.chart }}
+        RELEASE_APP: ${{ steps.release.outputs.app_release }}
+        RELEASE_KIND: ${{ steps.release.outputs.kind }}
+      run: bash "${ACTION_PATH}/create-pr.sh"

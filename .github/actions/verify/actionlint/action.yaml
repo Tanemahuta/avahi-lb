@@ -1,0 +1,10 @@
+name: actionlint
+description: Validate GitHub workflows and their local action references
+
+runs:
+  using: composite
+  steps:
+    - name: Run actionlint
+      uses: docker://rhysd/actionlint:1.7.7
+      with:
+        args: -color
