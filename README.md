@@ -1,7 +1,9 @@
 ![build](https://github.com/Tanemahuta/avahi-lb/actions/workflows/verify.yml/badge.svg)
 [![codecov](https://codecov.io/gh/Tanemahuta/avahi-lb/branch/main/graph/badge.svg?token=FHO3AAZ41O)](https://codecov.io/gh/Tanemahuta/avahi-lb)
 [![Go Reference](https://pkg.go.dev/badge/github.com/Tanemahuta/avahi-lb.svg)](https://pkg.go.dev/github.com/Tanemahuta/avahi-lb)
-[![GHCR](https://ghcr-badge.egpl.dev/tanemahuta/avahi-lb/latest_tag?trim=major&label=latest&ignore=latest,main,sha256*)](https://github.com/Tanemahuta/avahi-lb/pkgs/container/avahi-lb/)
+[![GHCR major](https://ghcr-badge.egpl.dev/tanemahuta/avahi-lb/latest_tag?label=major&ignore=latest,main,sha256*,*.*)](https://github.com/Tanemahuta/avahi-lb/pkgs/container/avahi-lb/)
+[![GHCR minor](https://ghcr-badge.egpl.dev/tanemahuta/avahi-lb/latest_tag?label=minor&trim=patch&ignore=latest,main,sha256*)](https://github.com/Tanemahuta/avahi-lb/pkgs/container/avahi-lb/)
+[![GHCR micro](https://ghcr-badge.egpl.dev/tanemahuta/avahi-lb/latest_tag?label=micro&trim=major&ignore=latest,main,sha256*)](https://github.com/Tanemahuta/avahi-lb/pkgs/container/avahi-lb/)
 
 # avahi-lb
 
