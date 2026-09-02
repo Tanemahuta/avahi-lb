@@ -10,8 +10,6 @@ runs:
       with:
         version: v2.12
         only-new-issues: true
-    - name: Update Go report
-      uses: creekorful/goreportcard-action@v1.0
     - name: Run tests
       shell: bash
       run: |

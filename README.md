@@ -1,5 +1,4 @@
-![build](https://github.com/Tanemahuta/avahi-lb/actions/workflows/verify.yml/badge.svg?branch=main)
-[![go report](https://goreportcard.com/badge/github.com/Tanemahuta/avahi-lb)](https://goreportcard.com/report/github.com/Tanemahuta/avahi-lb)
+![build](https://github.com/Tanemahuta/avahi-lb/actions/workflows/verify.yml/badge.svg)
 [![codecov](https://codecov.io/gh/Tanemahuta/avahi-lb/branch/main/graph/badge.svg?token=FHO3AAZ41O)](https://codecov.io/gh/Tanemahuta/avahi-lb)
 [![Go Reference](https://pkg.go.dev/badge/github.com/Tanemahuta/avahi-lb.svg)](https://pkg.go.dev/github.com/Tanemahuta/avahi-lb)
 [![GHCR](https://ghcr-badge.egpl.dev/tanemahuta/avahi-lb/tags?trim=major,minor&label=latest&ignore=sha256*,v*)](https://github.com/Tanemahuta/avahi-lb/pkgs/container/avahi-lb/)
