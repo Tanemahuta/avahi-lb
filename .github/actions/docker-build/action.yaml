@@ -40,4 +40,4 @@ runs:
           COMMIT_SHA=${{ github.sha }}
         tags: ${{ inputs.tags }}
         cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-to: type=gha,mode=max,ignore-error=true
