@@ -2,6 +2,20 @@ apiVersion: v1
 entries:
   avahi-lb:
   - apiVersion: v2
+    appVersion: 1.4.6
+    created: "2026-09-29T02:42:05.757104129Z"
+    description: A Helm chart for Kubernetes
+    digest: 373e12be312ed6bdd7c6260276f83d9b0037d8144a5c60261f8f2adcbd0f0546
+    maintainers:
+    - email: christian.heike@icloud.com
+      name: Tanemahuta
+      url: https://github.com/Tanemahuta
+    name: avahi-lb
+    type: application
+    urls:
+    - https://github.com/Tanemahuta/avahi-lb/releases/download/avahi-lb-1.4.6/avahi-lb-1.4.6.tgz
+    version: 1.4.6
+  - apiVersion: v2
     appVersion: 1.4.5
     created: "2026-09-22T01:43:32.841625737Z"
     description: A Helm chart for Kubernetes
@@ -155,4 +169,4 @@ entries:
     urls:
     - https://github.com/Tanemahuta/avahi-lb/releases/download/avahi-lb-1.0.0/avahi-lb-1.0.0.tgz
     version: 1.0.0
-generated: "2026-09-22T01:43:32.841660964Z"
+generated: "2026-09-29T02:42:05.757167598Z"
